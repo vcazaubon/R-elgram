@@ -1,0 +1,258 @@
+/* ============================================================
+   Réelgram — Design tokens & base
+   ============================================================ */
+:root {
+  /* Surfaces — deep near-black, cool-neutral */
+  --bg-0: #0a0a0c;          /* app background */
+  --bg-1: #101014;          /* raised surface */
+  --bg-2: #16161c;          /* card base */
+  --bg-3: #1e1e26;          /* control / chip */
+  --hairline: rgba(255,255,255,0.08);
+  --hairline-strong: rgba(255,255,255,0.14);
+
+  /* Glass */
+  --glass: rgba(22,22,28,0.55);
+  --glass-bright: rgba(30,30,40,0.62);
+
+  /* Text */
+  --txt-0: #f4f4f6;         /* primary */
+  --txt-1: #b8b8c4;         /* secondary */
+  --txt-2: #76768a;         /* tertiary / meta */
+  --txt-3: #4c4c5c;         /* faint */
+
+  /* Accent gradient: rose → orange → violet */
+  --a-rose:   #ff7eb3;
+  --a-orange: #ff9966;
+  --a-violet: #a78bfa;
+  --grad-accent: linear-gradient(115deg, #ff7eb3 0%, #ff9966 48%, #a78bfa 100%);
+  --grad-accent-soft: linear-gradient(115deg, rgba(255,126,179,0.18) 0%, rgba(255,153,102,0.14) 48%, rgba(167,139,250,0.18) 100%);
+
+  /* Category accents (discreet) */
+  --c-revoir: #ff9966;
+  --c-inspiration: #a78bfa;
+  --c-muscu: #5ee2a0;
+  --c-business: #5fa8ff;
+  --c-humour: #ffd166;
+  --c-idees: #ff7eb3;
+
+  /* Radii */
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 30px;
+  --r-pill: 999px;
+
+  /* Spacing scale (8pt) */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 24px; --s7: 32px; --s8: 40px;
+
+  /* Shadows */
+  --shadow-card: 0 18px 40px -20px rgba(0,0,0,0.8);
+  --shadow-pop: 0 24px 60px -16px rgba(0,0,0,0.85);
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  background: #050506;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  color: var(--txt-0);
+  overflow: hidden;
+}
+
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input { font-family: inherit; }
+
+/* ============================================================
+   Stage — center the phone, scale to fit
+   ============================================================ */
+#stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-right: 230px;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(167,139,250,0.10), transparent 60%),
+    radial-gradient(90% 70% at 80% 110%, rgba(255,126,179,0.07), transparent 55%),
+    #050506;
+}
+
+.phone {
+  position: relative;
+  width: 390px;
+  height: 844px;
+  background: var(--bg-0);
+  border-radius: 46px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06),
+    0 50px 120px -30px rgba(0,0,0,0.9),
+    0 0 80px -20px rgba(167,139,250,0.12);
+  transform-origin: center center;
+}
+
+/* subtle ambient glow inside the screen */
+.phone::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(110% 50% at 50% -5%, rgba(167,139,250,0.10), transparent 55%);
+  z-index: 0;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 1;
+}
+
+/* ============================================================
+   Status bar
+   ============================================================ */
+.statusbar {
+  height: 50px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 26px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--txt-0);
+  z-index: 30;
+  position: relative;
+}
+.statusbar .sb-right { display: flex; align-items: center; gap: 6px; }
+
+/* scrollable content region */
+.scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  position: relative;
+}
+.scroll::-webkit-scrollbar { display: none; }
+
+/* ============================================================
+   Reusable
+   ============================================================ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  font-size: 13.5px;
+  font-weight: 560;
+  white-space: nowrap;
+  color: var(--txt-1);
+  background: var(--bg-3);
+  border: 1px solid var(--hairline);
+  transition: all 0.25s var(--ease);
+}
+.pill.active {
+  color: #0a0a0c;
+  background: var(--grad-accent);
+  border-color: transparent;
+  font-weight: 640;
+}
+
+.cat-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+
+/* primary gradient button */
+.btn-primary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  height: 56px;
+  border-radius: var(--r-lg);
+  font-size: 16.5px;
+  font-weight: 640;
+  color: #120a14;
+  background: var(--grad-accent);
+  box-shadow: 0 14px 34px -12px rgba(255,126,179,0.5), 0 6px 18px -10px rgba(167,139,250,0.6);
+  transition: transform 0.2s var(--ease), filter 0.2s var(--ease);
+  overflow: hidden;
+}
+.btn-primary:active { transform: scale(0.975); filter: brightness(1.05); }
+.btn-primary::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.25), transparent 40%);
+  opacity: 0.6;
+}
+
+.btn-ghost {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  height: 52px; width: 100%;
+  border-radius: var(--r-md);
+  font-size: 15.5px; font-weight: 560;
+  color: var(--txt-0);
+  background: var(--bg-3);
+  border: 1px solid var(--hairline);
+  transition: background 0.2s var(--ease);
+}
+.btn-ghost:active { background: var(--bg-2); }
+
+/* ============================================================
+   Screen transitions
+   ============================================================ */
+.view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .view-enter { animation: viewIn 0.42s var(--ease) both; }
+  .view-enter-back { animation: viewInBack 0.42s var(--ease) both; }
+  .modal-enter { animation: modalIn 0.4s var(--ease) both; }
+}
+@keyframes viewIn {
+  from { transform: translateX(26px) scale(0.985); }
+  to   { transform: none; }
+}
+@keyframes viewInBack {
+  from { transform: translateX(-26px) scale(0.985); }
+  to   { transform: none; }
+}
+@keyframes modalIn {
+  from { transform: translateY(46px) scale(0.985); }
+  to   { transform: none; }
+}
+
+/* staggered list entrance */
+@media (prefers-reduced-motion: no-preference) {
+  .rise { animation: rise 0.5s var(--ease) both; }
+}
+@keyframes rise {
+  from { transform: translateY(18px); }
+  to   { transform: none; }
+}
+
+/* glow pulse for FAB */
+@keyframes glowPulse {
+  0%,100% { box-shadow: 0 14px 34px -12px rgba(255,126,179,0.5), 0 0 0 0 rgba(255,126,179,0.0); }
+  50%     { box-shadow: 0 14px 38px -12px rgba(255,126,179,0.65), 0 0 26px 2px rgba(167,139,250,0.18); }
+}
+
+/* spin */
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* shimmer for thumbnails / loading */
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }

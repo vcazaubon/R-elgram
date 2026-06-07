@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover lets us use the safe-area insets under the notch -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Réelgram</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0a0a0c" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <!-- iOS standalone + status bar -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Réelgram" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png" />
+
+  <link rel="stylesheet" href="../styles.css" />
+  <style>
+    /* Full-bleed app shell — no bezel, fills the device, safe-area aware */
+    #stage { all: unset; }
+    html, body { background: var(--bg-0); overflow: hidden; }
+    #root { width: 100%; height: 100%; }
+    .app-root {
+      position: relative;
+      width: 100%;
+      max-width: 520px;           /* center nicely on desktop / tablet */
+      height: 100dvh;
+      margin: 0 auto;
+      background: var(--bg-0);
+      overflow: hidden;
+      /* ambient top glow, same DNA as the prototype */
+      background-image: radial-gradient(120% 42% at 50% -8%, rgba(167,139,250,0.10), transparent 60%);
+    }
+    /* honour the home-indicator safe area on the tab bar / CTAs already use env() */
+  </style>
+
+  <script>window.__REELGRAM_PWA = true;</script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="../data.jsx"></script>
+  <script type="text/babel" src="../components.jsx"></script>
+  <script type="text/babel" src="../screens-login.jsx"></script>
+  <script type="text/babel" src="../screens-main.jsx"></script>
+  <script type="text/babel" src="../screens-import.jsx"></script>
+  <script type="text/babel" src="../screens-player.jsx"></script>
+  <script type="text/babel" src="../screens-direction.jsx"></script>
+  <script type="text/babel" src="pwa-app.jsx"></script>
+</body>
+</html>
