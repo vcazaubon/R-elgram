@@ -1,16 +1,19 @@
 // ============================================================
-// Réelgram — Categories (inline add / rename / delete on local state)
+// Réelgram — Categories (inline add / rename / delete) — real data
 // Ported from design-reference/project/screens-main.jsx → CategoriesScreen.
+// CRUD is delegated to App (db.ts: createCategory / renameCategory /
+// deleteCategory). Counts reflect real videos (category_id). Deleting a
+// category sets its videos to category_id=null ("Sans catégorie") server-side.
 // ============================================================
 import { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { StatusBar } from '../components/StatusBar';
 import { TabBar, type TabId } from '../components/TabBar';
-import type { MockCategory, MockVideo } from '../lib/mock';
+import type { Category, Video } from '../lib/types';
 
 export interface CategoriesScreenProps {
-  videos: MockVideo[];
-  categories: MockCategory[];
+  videos: Video[];
+  categories: Category[];
   onTab: (tab: TabId) => void;
   tab: TabId;
   onRename: (id: string, label: string) => void;
@@ -23,7 +26,7 @@ export function CategoriesScreen({ videos, categories, onTab, tab, onRename, onD
   const [draft, setDraft] = useState('');
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
-  const count = (id: string) => videos.filter((v) => v.cat === id).length;
+  const count = (id: string) => videos.filter((v) => v.category_id === id).length;
 
   return (
     <div className="view">
@@ -39,7 +42,7 @@ export function CategoriesScreen({ videos, categories, onTab, tab, onRename, onD
             <div key={c.id} className="rise" style={{ animationDelay: `${0.04 * i}s`,
               display: 'flex', alignItems: 'center', gap: 13, padding: '15px 16px', borderRadius: 18,
               background: 'var(--bg-1)', border: '1px solid var(--hairline)' }}>
-              <span style={{ width: 12, height: 12, borderRadius: '50%', background: c.hex, boxShadow: `0 0 14px -1px ${c.hex}`, flex: '0 0 auto' }} />
+              <span style={{ width: 12, height: 12, borderRadius: '50%', background: c.color, boxShadow: `0 0 14px -1px ${c.color}`, flex: '0 0 auto' }} />
               {editing === c.id ? (
                 <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
                   onBlur={() => { onRename(c.id, draft); setEditing(null); }}
@@ -62,7 +65,7 @@ export function CategoriesScreen({ videos, categories, onTab, tab, onRename, onD
               <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nom de la catégorie"
                 onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) { onAdd(newName.trim()); setNewName(''); setAdding(false); } }}
                 style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--txt-0)', fontSize: 16 }} />
-              <button onClick={() => { if (newName.trim()) onAdd(newName.trim()); setNewName(''); setAdding(false); }} style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', color: '#0a0a0c', background: 'var(--grad-accent)' }}><Icons.check size={18} /></button>
+              <button onClick={() => { if (newName.trim()) onAdd(newName.trim()); setNewName(''); setAdding(false); }} aria-label="Confirmer la catégorie" style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', color: '#0a0a0c', background: 'var(--grad-accent)' }}><Icons.check size={18} /></button>
             </div>
           ) : (
             <button onClick={() => setAdding(true)} style={{
