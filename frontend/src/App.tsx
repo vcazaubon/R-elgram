@@ -174,11 +174,41 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
   // Monotonic counter identifying the most recent openVideo request, so a stale
   // async media-URL resolution can't clobber the currently displayed video.
   const openVideoReq = useRef(0);
-  const [importError] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [navKey, setNavKey] = useState(0);
+  // URL pre-filled into the Import screen (deep link / Web Share Target).
+  const [importUrl, setImportUrl] = useState<string | undefined>(undefined);
 
   const go = (r: Route) => { setRoute(r); setNavKey((k) => k + 1); };
+
+  // ---- deep link / share target -------------------------------------------
+  // At boot (session already active here), honour ?import=<url> (or ?url=) by
+  // opening the Import screen pre-filled, then strip the param so a reload /
+  // back navigation doesn't re-trigger the flow. iOS uses the Shortcut instead.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.get('import') ?? params.get('url');
+    if (shared) {
+      setImportUrl(shared);
+      go('import');
+      params.delete('import');
+      params.delete('url');
+      const qs = params.toString();
+      const clean = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
+      window.history.replaceState(null, '', clean);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Finalise an ingestion started from the Import screen: close import, jump to
+  // the library and refetch so the new video appears (status then evolves via
+  // realtime / its own polling).
+  const handleSaved = () => {
+    setImportUrl(undefined);
+    setTab('library');
+    go('library');
+    void refresh();
+  };
 
   // ---- data loading --------------------------------------------------------
 
@@ -301,23 +331,27 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
 
   const onTab = (t: TabId) => { setTab(t); go(t === 'categories' ? 'categories' : 'library'); };
 
+  // Open the Import screen blank (FAB / empty state); a deep-link URL only
+  // pre-fills when set by the share-target effect above.
+  const openImport = () => { setImportUrl(undefined); go('import'); };
+
   return (
     <div className="app-root">
       <div key={navKey} style={{ position: 'absolute', inset: 0 }}>
         {route === 'library' && (
           !loading && videos.length === 0
-            ? <EmptyScreen tab="library" onTab={onTab} onAdd={() => go('import')} />
+            ? <EmptyScreen tab="library" onTab={onTab} onAdd={openImport} />
             : <LibraryScreen videos={videos} categories={categories} thumbUrls={thumbUrls} loading={loading}
                 tab="library" onTab={onTab} onOpen={openVideo}
-                onAdd={() => go('import')} onAccount={() => setAccountOpen(true)} />
+                onAdd={openImport} onAccount={() => setAccountOpen(true)} />
         )}
         {route === 'categories' && (
           <CategoriesScreen videos={videos} categories={categories} tab="categories" onTab={onTab}
             onRename={renameCat} onDelete={deleteCat} onAdd={addCat} />
         )}
         {route === 'import' && (
-          <ImportScreen categories={categories} forceError={importError}
-            onClose={() => go('library')} onSaved={() => { void refresh(); setTab('library'); go('library'); }} />
+          <ImportScreen categories={categories} initialUrl={importUrl}
+            onClose={() => go('library')} onSaved={handleSaved} />
         )}
         {route === 'player' && current && (
           <PlayerScreen video={current} categories={categories} streamUrl={streamUrl}

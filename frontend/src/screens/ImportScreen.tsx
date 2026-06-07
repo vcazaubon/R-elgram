@@ -1,55 +1,126 @@
 // ============================================================
-// Réelgram — Import flow (form + simulated 4-step progress + error)
-// Ported from design-reference/project/screens-import.jsx.
-// Mock: progression is simulated via setTimeout/useEffect (real ingest
-// wired in Spec 07). forceError flips to the error state mid-fetch.
+// Réelgram — Import flow (form + REAL 4-step ingestion + error) — Spec 07
+// Ported from design-reference/project/screens-import.jsx, visual kept
+// pixel-perfect. The proto's simulated setTimeout progression is replaced by
+// the real backend pipeline: api.ingest(url, categoryId) → {id}, then poll
+// api.ingestStatus(id) every ~800ms and feed the result through progressFor()
+// to animate the medallion (%) + step list. ready → done, error → error state.
+// The polling interval is cleaned up on unmount / phase change.
 // ============================================================
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icons } from '../components/Icons';
 import { StatusBar } from '../components/StatusBar';
 import { Thumb } from '../components/Thumb';
-import type { Category } from '../lib/types';
+import * as api from '../lib/api';
+import { progressFor } from '../lib/ingestProgress';
+import type { Category, VideoStatus } from '../lib/types';
 
 export interface ImportScreenProps {
   onClose: () => void;
   onSaved: (catId: string) => void;
   categories: Category[];
-  forceError: boolean;
+  /** Pre-fill the URL field (deep link / share target / iOS Shortcut). */
+  initialUrl?: string;
 }
 
 type Phase = 'form' | 'progress' | 'done' | 'error';
 
 const STEPS = ['Analyse du lien', 'Récupération de la vidéo', 'Création de la miniature', 'Vidéo sauvegardée'];
+const POLL_MS = 800;
+const DEFAULT_ERROR = "Le lien est peut-être privé ou expiré. Vérifie l'URL et réessaie.";
 
-export function ImportScreen({ onClose, onSaved, categories, forceError }: ImportScreenProps) {
-  const [url, setUrl] = useState('https://www.instagram.com/reel/C8xQ2pLm3aZ/');
+/** Short slug shown in the preview chip, e.g. "reel/C8xQ2pLm3aZ". */
+function urlSlug(raw: string): string {
+  try {
+    const u = new URL(raw);
+    const path = u.pathname.replace(/^\/+|\/+$/g, '');
+    return path || u.hostname;
+  } catch {
+    return raw.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  }
+}
+
+export function ImportScreen({ onClose, onSaved, categories, initialUrl }: ImportScreenProps) {
+  const [url, setUrl] = useState(initialUrl ?? '');
   const [cat, setCat] = useState(categories[0]?.id ?? '');
   const [phase, setPhase] = useState<Phase>('form');
+  // Live progression derived from the backend status; -1 step until first poll.
   const [step, setStep] = useState(0);
+  const [percent, setPercent] = useState(0);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const start = () => {
-    setPhase('progress'); setStep(0);
+  // Keep the active video id + a ref to the poll timer so we can always clear it.
+  const videoIdRef = useRef<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearTimer = () => {
+    if (timerRef.current !== null) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   };
 
-  useEffect(() => {
-    if (phase !== 'progress') return;
-    let cancelled = false;
-    const run = async () => {
-      for (let i = 0; i < STEPS.length; i++) {
-        await new Promise((r) => setTimeout(r, i === 1 ? 1100 : 850));
-        if (cancelled) return;
-        // simulate failure during fetch
-        if (forceError && i === 1) { setPhase('error'); return; }
-        setStep(i + 1);
-      }
-      await new Promise((r) => setTimeout(r, 500));
-      if (!cancelled) setPhase('done');
-    };
-    run();
-    return () => { cancelled = true; };
-  }, [phase]);
+  // Always stop polling when the component unmounts.
+  useEffect(() => clearTimer, []);
+
+  const applyStatus = (status: VideoStatus, backendStep?: number) => {
+    const p = progressFor(status, backendStep);
+    if (p.isError) {
+      clearTimer();
+      setPhase('error');
+      return;
+    }
+    setStep(p.step);
+    setPercent(p.percent);
+    if (p.isDone) {
+      clearTimer();
+      setPhase('done');
+    }
+  };
+
+  const start = async () => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setErrorMsg(null);
+    setStep(0);
+    setPercent(0);
+    setPhase('progress');
+    try {
+      const { id, status } = await api.ingest(trimmed, cat || undefined);
+      videoIdRef.current = id;
+      applyStatus(status);
+      // Begin polling the real status until ready/error.
+      clearTimer();
+      timerRef.current = setInterval(async () => {
+        const vid = videoIdRef.current;
+        if (!vid) return;
+        try {
+          const s = await api.ingestStatus(vid);
+          applyStatus(s.status, s.step);
+          if (s.status === 'error' && s.error) setErrorMsg(s.error);
+        } catch {
+          // Transient poll failure: keep trying; a persistent backend error
+          // surfaces as a status==='error' or stays on the progress screen.
+        }
+      }, POLL_MS);
+    } catch (e) {
+      clearTimer();
+      setErrorMsg(e instanceof Error ? e.message : DEFAULT_ERROR);
+      setPhase('error');
+    }
+  };
+
+  const retry = () => {
+    clearTimer();
+    videoIdRef.current = null;
+    setErrorMsg(null);
+    setStep(0);
+    setPercent(0);
+    setPhase('form');
+  };
 
   const selectedCat = categories.find((c) => c.id === cat) ?? categories[0] ?? null;
+  const slug = urlSlug(url);
 
   return (
     <div className="view modal-enter" style={{ background: 'var(--bg-0)' }}>
@@ -77,7 +148,8 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
             <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--txt-2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 26, marginBottom: 9 }}>Lien Instagram</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 14px', height: 54, borderRadius: 15, background: 'var(--bg-2)', border: '1px solid var(--hairline)' }}>
               <Icons.link size={19} style={{ color: 'var(--a-violet)', flex: '0 0 auto' }} />
-              <input value={url} onChange={(e) => setUrl(e.target.value)}
+              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/…"
+                inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false}
                 style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--txt-0)', fontSize: 14.5, textOverflow: 'ellipsis' }} />
             </div>
 
@@ -88,7 +160,7 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Reel · Instagram</div>
-                <div style={{ fontSize: 12.5, color: 'var(--txt-2)', marginTop: 3, fontFamily: 'ui-monospace, monospace' }}>reel/C8xQ2pLm3aZ</div>
+                <div style={{ fontSize: 12.5, color: 'var(--txt-2)', marginTop: 3, fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{slug || 'reel/…'}</div>
               </div>
             </div>
 
@@ -105,7 +177,7 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
         )}
 
         {(phase === 'progress' || phase === 'done') && (
-          <ProgressBlock steps={STEPS} step={step} done={phase === 'done'} cat={selectedCat} />
+          <ProgressBlock steps={STEPS} step={step} percent={percent} done={phase === 'done'} cat={selectedCat} />
         )}
 
         {phase === 'error' && (
@@ -117,9 +189,9 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
               </div>
             </div>
             <h2 style={{ marginTop: 18, fontSize: 21, fontWeight: 680, letterSpacing: '-0.02em', maxWidth: 260 }}>Impossible de récupérer cette vidéo</h2>
-            <p style={{ marginTop: 10, fontSize: 14.5, color: 'var(--txt-1)', lineHeight: 1.5, maxWidth: 280 }}>Le lien est peut-être privé ou expiré. Vérifie l'URL et réessaie.</p>
+            <p style={{ marginTop: 10, fontSize: 14.5, color: 'var(--txt-1)', lineHeight: 1.5, maxWidth: 280 }}>{errorMsg ?? DEFAULT_ERROR}</p>
             <div style={{ marginTop: 28, width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button className="btn-primary" onClick={() => setPhase('form')}><Icons.retry size={19} /> Réessayer</button>
+              <button className="btn-primary" onClick={retry}><Icons.retry size={19} /> Réessayer</button>
               <button className="btn-ghost" onClick={onClose}>Annuler</button>
             </div>
           </div>
@@ -129,7 +201,7 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
       {/* footer CTA */}
       {phase === 'form' && (
         <div style={{ padding: '12px 22px calc(env(safe-area-inset-bottom,0px) + 22px)', background: 'linear-gradient(180deg, transparent, var(--bg-0) 40%)' }}>
-          <button className="btn-primary" onClick={start}><Icons.sparkle size={20} /> Sauvegarder la vidéo</button>
+          <button className="btn-primary" onClick={start} disabled={!url.trim()}><Icons.sparkle size={20} /> Sauvegarder la vidéo</button>
         </div>
       )}
       {phase === 'done' && (
@@ -144,12 +216,13 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
 interface ProgressBlockProps {
   steps: string[];
   step: number;
+  percent: number;
   done: boolean;
   cat: Category | null;
 }
 
-function ProgressBlock({ steps, step, done, cat }: ProgressBlockProps) {
-  const pct = done ? 100 : Math.min(100, (step / steps.length) * 100 + 6);
+function ProgressBlock({ steps, step, percent, done, cat }: ProgressBlockProps) {
+  const pct = done ? 100 : Math.min(100, percent);
   return (
     <div className="view-enter" style={{ position: 'static', paddingTop: 34, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       {/* animated medallion */}
