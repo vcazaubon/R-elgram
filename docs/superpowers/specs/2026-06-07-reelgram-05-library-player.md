@@ -19,6 +19,10 @@ accepte un objet `{ g:[string,string] }` (dégradé) ; pour la vraie miniature, 
 afficher un `<img src=thumb_url>`, soit dériver `g` depuis `thumb_color`. Les handlers
 mock de `App.tsx` (open/save/update/delete/rename/cat) sont à remplacer par les
 appels Supabase/API réels.
+Auth dispo (Spec 04) : `useAuth()` de `src/lib/auth.tsx` expose
+`session/user/signIn/signUp/signOut/getAccessToken` ; un **bouton logout caché**
+(placeholder 1×1px dans `App.tsx`) est à **remplacer** par la déconnexion de la
+feuille Compte. Le client Supabase est `src/lib/supabase.ts` (RLS via session).
 
 ## Tâches
 
