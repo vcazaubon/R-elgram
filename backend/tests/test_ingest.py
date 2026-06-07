@@ -4,6 +4,9 @@ The pipeline must walk ``videos.status`` fetching -> thumbnailing -> ready,
 fill the storage/thumb paths + metadata, and on failure flip to ``error``
 without ever propagating an exception.
 """
+import sys
+import types
+
 import pytest
 
 from app import ingest, supa
@@ -127,6 +130,67 @@ async def test_run_ingest_title_truncated(monkeypatch, tmp_path):
     await ingest.run_ingest("vid-3", "user-7", "https://instagram.com/p/xyz/")
 
     assert len(rec.final["title"]) <= 80
+
+
+def _fake_ytdlp(capture):
+    """A stand-in ``yt_dlp`` module that records the opts ``_download`` builds
+    and simulates a successful download (writes the output file)."""
+    mod = types.ModuleType("yt_dlp")
+
+    class FakeYDL:
+        def __init__(self, opts):
+            capture["opts"] = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def extract_info(self, url, download):
+            from pathlib import Path
+            out = Path(capture["opts"]["outtmpl"])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(b"fakevideo")
+            return {"title": "t"}
+
+    mod.YoutubeDL = FakeYDL
+    return mod
+
+
+# --- cookie file guard: a configured-but-missing cookies file (expired cookies,
+#     lost mount, ...) must NOT crash every download with FileNotFoundError.
+#     yt-dlp opens ``cookiefile`` eagerly, so we simply don't pass it. ----------
+
+def test_download_skips_missing_cookiefile(monkeypatch, tmp_path):
+    capture = {}
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_ytdlp(capture))
+
+    ingest._download(
+        "https://x/reel", tmp_path / "v.mp4", str(tmp_path / "absent.txt"), 300
+    )
+
+    assert "cookiefile" not in capture["opts"]
+
+
+def test_download_uses_existing_cookiefile(monkeypatch, tmp_path):
+    capture = {}
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_ytdlp(capture))
+    cookie = tmp_path / "cookies.txt"
+    cookie.write_text("# Netscape HTTP Cookie File\n")
+
+    ingest._download("https://x/reel", tmp_path / "v.mp4", str(cookie), 300)
+
+    assert capture["opts"].get("cookiefile") == str(cookie)
+
+
+def test_download_without_cookies_arg(monkeypatch, tmp_path):
+    capture = {}
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_ytdlp(capture))
+
+    ingest._download("https://x/reel", tmp_path / "v.mp4", None, 300)
+
+    assert "cookiefile" not in capture["opts"]
 
 
 async def test_run_ingest_download_error(monkeypatch, tmp_path):

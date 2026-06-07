@@ -11,10 +11,17 @@ services:
       MAX_VIDEO_MB: ${MAX_VIDEO_MB:-300}
     volumes:
       - reelgram-media:/data
-      # Optional Instagram cookies (Netscape cookies.txt). Uncomment the line
-      # below AND set IG_COOKIES_FILE=/secrets/ig_cookies.txt to enable. Left
-      # commented by default so the stack starts without a cookies file.
-      # - ${IG_COOKIES_HOST_PATH}:/secrets/ig_cookies.txt:ro
+      # Instagram cookies (Netscape cookies.txt) for yt-dlp on private/age-gated
+      # Reels. The file lives on the HOST, OUTSIDE this git repo, so the secret
+      # is never committed; it is bind-mounted read-only into the container.
+      # `is_directory: false` is a Coolify hint (v4.1.2) that stops it from
+      # creating a *file* bind-mount as a directory (coollabsio/coolify#8107).
+      # To rotate the cookies: replace the host file, no redeploy needed.
+      - type: bind
+        source: /home/claudeuser/reelgram-secrets/ig_cookies.txt
+        target: /secrets/ig_cookies.txt
+        read_only: true
+        is_directory: false
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

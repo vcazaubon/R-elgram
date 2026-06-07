@@ -10,12 +10,15 @@ External binaries (yt-dlp, ffmpeg) live in private helpers so tests can mock the
 from __future__ import annotations
 
 import asyncio
+import logging
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 from . import supa
 from .config import get_settings
+
+_LOG = logging.getLogger(__name__)
 
 DEFAULT_TITLE = "Sans titre"
 TITLE_MAX = 80
@@ -59,8 +62,15 @@ def _download(url: str, dest: Path, cookies: Optional[str], max_mb: int) -> dict
         "no_warnings": True,
         "max_filesize": max_mb * 1024 * 1024,
     }
-    if cookies:
+    # Only hand yt-dlp a cookies file that actually exists. yt-dlp opens
+    # ``cookiefile`` eagerly, so a configured-but-missing path (expired cookies,
+    # a lost bind mount, ...) would raise FileNotFoundError on EVERY download.
+    # Degrade gracefully instead: public Reels still work without cookies; only
+    # private/age-gated ones fail — and with a clearer error than [Errno 2].
+    if cookies and Path(cookies).exists():
         opts["cookiefile"] = cookies
+    elif cookies:
+        _LOG.warning("IG cookies file %r introuvable — téléchargement sans cookies", cookies)
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
