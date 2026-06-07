@@ -22,6 +22,7 @@ import {
 import { setAuthTokenGetter, getMediaUrl } from './lib/api';
 import * as db from './lib/db';
 import type { Category, Video } from './lib/types';
+import { Icons } from './components/Icons';
 import { LoginScreen } from './screens/LoginScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { EmptyScreen } from './screens/EmptyScreen';
@@ -171,6 +172,8 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
   const [route, setRoute] = useState<Route>('library');
   const [current, setCurrent] = useState<Video | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  // Video pending deletion via library long-press (confirmation sheet).
+  const [pendingDelete, setPendingDelete] = useState<Video | null>(null);
   // Monotonic counter identifying the most recent openVideo request, so a stale
   // async media-URL resolution can't clobber the currently displayed video.
   const openVideoReq = useRef(0);
@@ -287,8 +290,9 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
   };
 
   const handleDeleteVideo = async (v: Video) => {
+    // Optimistic removal. Navigation (if any) is the caller's concern so the
+    // delete can be triggered from the library too, not only from the player.
     setVideos((vs) => vs.filter((x) => x.id !== v.id));
-    go('library');
     try {
       await db.deleteVideo(v.id);
     } catch {
@@ -342,7 +346,7 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
           !loading && videos.length === 0
             ? <EmptyScreen tab="library" onTab={onTab} onAdd={openImport} />
             : <LibraryScreen videos={videos} categories={categories} thumbUrls={thumbUrls} loading={loading}
-                tab="library" onTab={onTab} onOpen={openVideo}
+                tab="library" onTab={onTab} onOpen={openVideo} onRequestDelete={setPendingDelete}
                 onAdd={openImport} onAccount={() => setAccountOpen(true)} />
         )}
         {route === 'categories' && (
@@ -355,7 +359,8 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
         )}
         {route === 'player' && current && (
           <PlayerScreen video={current} categories={categories} streamUrl={streamUrl}
-            onBack={() => go('library')} onUpdate={handleUpdateVideo} onDelete={handleDeleteVideo} />
+            onBack={() => go('library')} onUpdate={handleUpdateVideo}
+            onDelete={(v) => { void handleDeleteVideo(v); go('library'); }} />
         )}
       </div>
 
@@ -367,6 +372,40 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
       )}
 
       {offerEnroll && <EnrollSheet onEnroll={onEnroll} onSkip={onSkipEnroll} />}
+
+      {pendingDelete && (
+        <ConfirmDeleteSheet
+          title={pendingDelete.title}
+          onConfirm={() => { const v = pendingDelete; setPendingDelete(null); void handleDeleteVideo(v); }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface ConfirmDeleteSheetProps {
+  title: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmDeleteSheet({ title, onConfirm, onCancel }: ConfirmDeleteSheetProps) {
+  return (
+    <div onClick={onCancel} style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(3px)', animation: 'fadeBg 0.25s ease both' }}>
+      <style>{`@keyframes fadeBg{from{opacity:0}to{opacity:1}}@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}`}</style>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-1)', borderRadius: '26px 26px 0 0', border: '1px solid var(--hairline)', borderBottom: 'none', padding: '10px 22px calc(env(safe-area-inset-bottom,0px) + 26px)', animation: 'sheetUp 0.36s var(--ease) both', boxShadow: '0 -20px 60px -20px rgba(0,0,0,0.8)', textAlign: 'center' }}>
+        <div style={{ width: 40, height: 5, borderRadius: 999, background: 'var(--hairline-strong)', margin: '0 auto 18px' }} />
+        <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,93,108,0.12)', display: 'grid', placeItems: 'center', margin: '4px auto 16px', color: '#ff8a96' }}>
+          <Icons.trash size={26} />
+        </div>
+        <h3 style={{ fontSize: 18, fontWeight: 680 }}>Supprimer cette vidéo ?</h3>
+        <p style={{ fontSize: 14, color: 'var(--txt-1)', marginTop: 8, lineHeight: 1.5, wordBreak: 'break-word' }}>
+          « {title} » sera retirée de ta bibliothèque. Cette action est définitive.
+        </p>
+        <button onClick={onConfirm} style={{ marginTop: 22, width: '100%', height: 54, borderRadius: 16, fontSize: 16, fontWeight: 640, color: '#fff', background: '#e8475a' }}>Supprimer</button>
+        <button className="btn-ghost" style={{ marginTop: 10 }} onClick={onCancel}>Annuler</button>
+      </div>
     </div>
   );
 }

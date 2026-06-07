@@ -6,6 +6,7 @@
 // the resolved category. Videos whose `status !== 'ready'` show a "…" badge
 // and are not clickable until the ingest job completes.
 // ============================================================
+import { useRef } from 'react';
 import type { Video, Category } from '../lib/types';
 import { Icons } from './Icons';
 import { Thumb } from './Thumb';
@@ -18,11 +19,45 @@ export interface VideoCardProps {
   /** Resolved signed thumbnail URL (media-url), if already fetched. */
   thumbUrl?: string | null;
   onOpen: (video: Video) => void;
+  /**
+   * Long-press handler: lets the user delete a reel straight from the library,
+   * without entering the player (which is where the only other delete lives).
+   */
+  onRequestDelete?: (video: Video) => void;
 }
 
-export function VideoCard({ video, index, categories, thumbUrl, onOpen }: VideoCardProps) {
+const LONG_PRESS_MS = 500;
+
+export function VideoCard({ video, index, categories, thumbUrl, onOpen, onRequestDelete }: VideoCardProps) {
   const cat = categoryFor(video.category_id, categories);
   const ready = video.status === 'ready';
+
+  // Long-press → delete. A fired long-press also suppresses the click that iOS
+  // synthesises on release, so the player doesn't open at the same time.
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+
+  const startPress = () => {
+    if (!onRequestDelete) return;
+    longPressFired.current = false;
+    pressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      onRequestDelete(video);
+    }, LONG_PRESS_MS);
+  };
+  const cancelPress = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+  const handleClick = () => {
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      return; // the long-press consumed this tap (delete requested)
+    }
+    onOpen(video);
+  };
 
   const body = (
     <div style={{ position: 'relative' }}>
@@ -168,13 +203,20 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen }: VideoC
   return (
     <button
       className="rise"
-      onClick={() => onOpen(video)}
+      onClick={handleClick}
+      onPointerDown={startPress}
+      onPointerUp={cancelPress}
+      onPointerLeave={cancelPress}
+      onPointerCancel={cancelPress}
+      onContextMenu={(e) => e.preventDefault()}
       style={{
         display: 'block',
         width: '100%',
         textAlign: 'left',
         padding: 0,
         animationDelay: `${0.04 * index}s`,
+        WebkitTouchCallout: 'none',
+        userSelect: 'none',
       }}
     >
       {body}

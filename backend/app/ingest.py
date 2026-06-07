@@ -54,7 +54,11 @@ def _download(url: str, dest: Path, cookies: Optional[str], max_mb: int) -> dict
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     opts = {
-        "format": "bv*+ba/b",
+        # Prefer the H.264 (avc1) + AAC (mp4a) rendition Instagram serves: iOS
+        # Safari only decodes H.264/HEVC, so picking the "best" stream blindly
+        # could grab VP9/AV1 → black player on iPhone. Falls back to any stream
+        # when no avc1 rendition exists; _ensure_ios_compatible re-encodes those.
+        "format": "bv*[vcodec^=avc1]+ba[acodec^=mp4a]/b[vcodec^=avc1]/bv*+ba/b",
         "merge_output_format": "mp4",
         "outtmpl": str(dest),
         "noplaylist": True,
@@ -75,6 +79,50 @@ def _download(url: str, dest: Path, cookies: Optional[str], max_mb: int) -> dict
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
     return info or {}
+
+
+def _video_codec(path: Path) -> Optional[str]:
+    """Return the first video stream's codec name (``h264``/``vp9``/…) or None."""
+    try:
+        out = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
+                str(path),
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ).stdout.decode("utf-8", "ignore").strip()
+        return out or None
+    except Exception:
+        return None
+
+
+def _ensure_ios_compatible(path: Path) -> None:
+    """Guarantee ``path`` plays on iOS Safari: H.264 video + faststart moov atom.
+
+    iOS only decodes H.264/HEVC, but yt-dlp may still pick VP9/AV1 from Instagram
+    (a black player on iPhone — cf. the systematic-debugging session). When the
+    video stream is already H.264 we just stream-copy to move the moov atom to
+    the front (cheap); otherwise we re-encode the video to H.264. Audio is
+    normalised to AAC. The result replaces the original in place.
+    """
+    codec = _video_codec(path)
+    tmp = path.with_suffix(".ios.mp4")
+    if codec == "h264":
+        cmd = [
+            "ffmpeg", "-y", "-i", str(path),
+            "-c", "copy", "-movflags", "+faststart", str(tmp),
+        ]
+    else:
+        cmd = [
+            "ffmpeg", "-y", "-i", str(path),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-movflags", "+faststart", str(tmp),
+        ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    tmp.replace(path)
 
 
 def _thumbnail(src: Path, dst: Path) -> None:
@@ -168,6 +216,10 @@ async def run_ingest(video_id: str, user_id: str, url: str) -> None:
         # on vérifie qu'un fichier non-vide a bien été produit pour une erreur claire.
         if not video_path.exists() or video_path.stat().st_size == 0:
             raise RuntimeError("aucun fichier téléchargé (taille max dépassée ou vidéo indisponible)")
+
+        # Normalise to an iOS-decodable file (H.264 + faststart) before marking
+        # ready, so a VP9/AV1 download never reaches the iPhone as a black player.
+        await asyncio.to_thread(_ensure_ios_compatible, video_path)
 
         supa.update_video(video_id, {"status": "thumbnailing"})
         await asyncio.to_thread(_thumbnail, video_path, thumb_path)

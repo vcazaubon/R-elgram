@@ -21,13 +21,15 @@ export interface LibraryScreenProps {
   thumbUrls: Record<string, string>;
   loading: boolean;
   onOpen: (video: Video) => void;
+  /** Long-press on a card requests deletion (decoupled from the player). */
+  onRequestDelete: (video: Video) => void;
   onAdd: () => void;
   onTab: (tab: TabId) => void;
   tab: TabId;
   onAccount: () => void;
 }
 
-export function LibraryScreen({ videos, categories, thumbUrls, loading, onOpen, onAdd, onTab, tab, onAccount }: LibraryScreenProps) {
+export function LibraryScreen({ videos, categories, thumbUrls, loading, onOpen, onRequestDelete, onAdd, onTab, tab, onAccount }: LibraryScreenProps) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
   const [focused, setFocused] = useState(false);
@@ -105,7 +107,7 @@ export function LibraryScreen({ videos, categories, thumbUrls, loading, onOpen, 
               <p style={{ marginTop: 14, fontSize: 14.5 }}>Aucun résultat</p>
             </div>
           ) : filtered.map((v, i) => (
-            <VideoCard key={v.id} video={v} index={i} categories={categories} thumbUrl={thumbUrls[v.id]} onOpen={onOpen} />
+            <VideoCard key={v.id} video={v} index={i} categories={categories} thumbUrl={thumbUrls[v.id]} onOpen={onOpen} onRequestDelete={onRequestDelete} />
           ))}
         </div>
       </div>
