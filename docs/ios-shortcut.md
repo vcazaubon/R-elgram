@@ -57,19 +57,19 @@ Dans le corps **JSON**, ajoute les champs suivants :
 | Clé | Type | Valeur |
 |-----|------|--------|
 | `url` | Texte | l'**Entrée du raccourci** (variable « Entrée du raccourci ») |
-| `category_id` | Texte | *(optionnel)* l'UUID d'une catégorie pour ranger la vidéo |
+| `category_id` | Texte | *(facultatif, déconseillé — voir note ci-dessous)* |
 
 Concrètement, le corps envoyé ressemble à :
 
 ```json
 {
-  "url": "https://www.instagram.com/reel/C8xQ2pLm3aZ/",
-  "category_id": "8f0c…"
+  "url": "https://www.instagram.com/reel/C8xQ2pLm3aZ/"
 }
 ```
 
-> Le champ `category_id` est **facultatif**. Sans lui, la vidéo arrive sans
-> catégorie et tu pourras la ranger plus tard dans l'app.
+> Le champ `category_id` est **facultatif** et **déconseillé ici** : l'app
+> n'expose pas l'UUID des catégories, donc laisse-le de côté. Sans lui, la vidéo
+> arrive **sans catégorie** et tu la ranges en deux secondes depuis l'app.
 
 ---
 
@@ -104,7 +104,7 @@ notification »** pour confirmer l'envoi. La réponse de l'API est un JSON :
 
 | Cas | Code / état | Que faire |
 |-----|-------------|-----------|
-| Succès | `200` + `{ id, status }` | Rien — la vidéo s'ingère en arrière-plan. |
+| Succès | `201` + `{ id, status }` | Rien — la vidéo s'ingère en arrière-plan. |
 | Token invalide / manquant | `401` | Regénère un token dans **Compte** et mets-le à jour dans l'en-tête `X-Reelgram-Token`. |
 | URL non Instagram / invalide | `400` | Vérifie que l'entrée partagée est bien un lien Instagram (Reel/post vidéo). |
 | Échec de récupération (cookies manquants, contenu privé/expiré) | la vidéo finit en `status: "error"` | Le lien est peut-être privé/expiré ; côté serveur, vérifie la configuration des cookies Instagram (yt-dlp). Réessaie depuis l'app. |
