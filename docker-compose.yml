@@ -1,0 +1,37 @@
+services:
+  api:
+    build: ./backend
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      MEDIA_TOKEN_SECRET: ${MEDIA_TOKEN_SECRET}
+      DATA_DIR: /data
+      IG_COOKIES_FILE: ${IG_COOKIES_FILE:-}
+      MAX_VIDEO_MB: ${MAX_VIDEO_MB:-300}
+    volumes:
+      - reelgram-media:/data
+      # Optional Instagram cookies (Netscape cookies.txt). Uncomment the line
+      # below AND set IG_COOKIES_FILE=/secrets/ig_cookies.txt to enable. Left
+      # commented by default so the stack starts without a cookies file.
+      # - ${IG_COOKIES_HOST_PATH}:/secrets/ig_cookies.txt:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  web:
+    build: ./frontend
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      API_URL: /api
+      ALLOW_SIGNUPS: ${ALLOW_SIGNUPS:-true}
+    depends_on:
+      - api
+    ports:
+      - "80"          # Coolify maps the domain onto this service
+    restart: unless-stopped
+volumes:
+  reelgram-media:
