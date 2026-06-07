@@ -3,6 +3,18 @@
 > Lis `2026-06-07-reelgram-design.md` (§5 contrat d'API). Dépend de Spec 02, 04, 05.
 > Écran : `design-reference/project/screens-import.jsx`.
 
+## État actuel du frontend (après Spec 05 — réconciliation)
+- `frontend/src/lib/api.ts` expose déjà `ingest(url, categoryId?)` et `ingestStatus(id)`.
+- `frontend/src/screens/ImportScreen.tsx` existe mais sa progression 4 étapes est
+  **simulée** (setTimeout/useEffect du proto) — c'est CE qu'il faut remplacer par
+  le polling réel `api.ingestStatus`.
+- `frontend/src/screens/AccountSheet.tsx` (Spec 05) contient DÉJÀ la génération /
+  liste / révocation de tokens (`createToken`/`listTokens`/`deleteToken`). Cette
+  spec n'a plus qu'à y **ajouter le renvoi vers le guide iOS** (et l'URL exacte
+  `/api/ingest` avec le domaine), pas à refaire la gestion des tokens.
+- Le FAB Library → route `import` est déjà câblé ; `handleSaved` (App) reste à
+  finaliser pour rafraîchir la bibliothèque après ingestion.
+
 ## Objectif
 Brancher l'écran **Import** sur l'ingestion réelle du backend (yt-dlp), avec la
 progression 4 étapes et l'état d'erreur/retry du design. Livrer la **recette du

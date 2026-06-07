@@ -3,6 +3,14 @@
 > Lis `2026-06-07-reelgram-design.md` (§2 décisions auth). Dépend de Spec 01, 03.
 > Écran de référence : `design-reference/project/screens-login.jsx`.
 
+## État actuel du frontend (après Spec 03 — réconciliation)
+`frontend/` existe (Vite+React+TS) : `src/lib/config.ts` (lit `window.__ENV__`),
+`src/lib/types.ts` (types réels), `src/lib/mock.ts` (données mock), `src/App.tsx`
+(routing state-based route/tab/current/navKey + handlers mock), `src/screens/LoginScreen.tsx`
+= **port mock du proto** (boutons Face ID / Apple / « lien magique ») à **remplacer**
+par email+password ici. `@supabase/supabase-js` est déjà en dépendance (non importé).
+Composants dans `src/components/`. Wrappe l'app dans `AuthProvider` au bon endroit.
+
 ## Objectif
 Brancher l'authentification **email + mot de passe** via Supabase Auth, ajouter
 une couche **Face ID** (WebAuthn / authentificateur de plateforme) comme verrou
