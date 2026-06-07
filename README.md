@@ -1,143 +1,91 @@
+<div align="center">
+
+<img src="frontend/public/icons/icon-512.png" width="116" alt="Réelgram" />
+
 # Réelgram
 
-Vault privé de Reels Instagram — sauvegardez, organisez et regardez vos Reels
-depuis n'importe quel appareil.
+### Ton vault privé de Reels. Verrouillé, rien que pour toi.
 
-**Stack :** PWA Vite + React + TypeScript (frontend) · FastAPI + yt-dlp + ffmpeg
-(backend) · Supabase Cloud (auth + RLS) · vidéos stockées sur volume local ·
-déploiement Docker via Coolify.
+**Les vidéos Instagram que tu veux *vraiment* revoir — sauvegardées, classées, et à toi pour toujours.**
+Pas un réseau social. Pas un feed. Pas d'algorithme. Juste *ta* bibliothèque, premium et privée.
 
-## Architecture
+<br/>
 
-Deux conteneurs orchestrés par `docker-compose.yml` (à la racine) :
+![PWA](https://img.shields.io/badge/PWA-installable-7c3aed?style=for-the-badge)
+![React](https://img.shields.io/badge/React-18-1f2937?style=for-the-badge&logo=react)
+![FastAPI](https://img.shields.io/badge/FastAPI-yt--dlp-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20RLS-3ecf8e?style=for-the-badge&logo=supabase&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Coolify%20ready-2496ed?style=for-the-badge&logo=docker&logoColor=white)
 
-- **`web`** — nginx servant la PWA compilée **et** reverse-proxy `/api` →
-  `api:8000`. C'est le **seul** service exposé à un domaine. nginx sert la SPA
-  (fallback `try_files`) et `env.js` sans cache.
-- **`api`** — FastAPI (yt-dlp + ffmpeg). Reste sur le **réseau interne** :
-  jamais exposé directement, joignable uniquement via le proxy `web`.
-- **Volume `reelgram-media`** — stockage persistant des vidéos et miniatures
-  (`/data`), conservé entre redéploiements.
+</div>
 
-Origine unique : le front et l'API partagent le même domaine (`/` = PWA,
-`/api/*` = backend), donc pas de CORS et les cookies/JWT fonctionnent
-naturellement. TLS est géré par le proxy Coolify (Traefik).
+---
 
-La config front publique (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `API_URL`,
-`ALLOW_SIGNUPS`) est injectée **au runtime** dans `window.__ENV__` via `env.js`
-(généré par `frontend/docker-entrypoint.sh` au démarrage). La **même image**
-fonctionne sur tous les environnements : changer une variable + redéployer
-suffit, aucun rebuild requis.
+> **Tu connais ce Reel parfait** — la routine, l'astuce business, l'exo, l'idée — que tu « gardes » dans Instagram… puis que tu ne **retrouves jamais**. Les collections Instagram sont un cimetière. Réelgram, c'est l'inverse : un **coffre-fort personnel**, beau, rapide, où chaque vidéo sauvegardée est **vraiment à toi**, organisée et prête à revoir en deux secondes.
 
-## Prérequis
+## ✨ Pourquoi tu vas l'adorer
 
-1. **Projet Supabase Cloud.** Dans *Project Settings → API* / *API Keys* :
-   - `SUPABASE_URL` — Project URL.
-   - `SUPABASE_ANON_KEY` — clé **publique** : `sb_publishable_…` (nouveaux projets)
-     ou la clé `anon` `eyJ…` (projets legacy).
-   - `SUPABASE_SERVICE_ROLE_KEY` — clé **secrète** serveur : `sb_secret_…`
-     (nouveaux projets) ou `service_role` `eyJ…` (legacy).
-   - `SUPABASE_JWT_SECRET` — **optionnel**. Les projets récents signent les JWT en
-     **ES256 (clés asymétriques)** : le backend les vérifie via le **JWKS** dérivé
-     de `SUPABASE_URL`, donc laissez vide. Ne le remplissez que pour un projet
-     **legacy** signant en HS256.
-2. **Migration appliquée.** Exécutez `supabase/migrations/0001_init.sql` sur le
-   projet (tables, RLS, trigger des catégories par défaut). Voir
-   `supabase/migrations/README.md`.
-3. **`MEDIA_TOKEN_SECRET`** — secret aléatoire **obligatoire** pour signer les
-   URLs média. Générez-le avec :
-   ```sh
-   openssl rand -hex 32
-   ```
-   Sans ce secret, le streaming vidéo et les miniatures ne fonctionnent pas.
+- 📲 **Sauvegarde en 1 geste depuis iOS** — partage un Reel → il atterrit dans ton vault. Un Raccourci iOS natif fait tout le travail.
+- 🗄️ **Une bibliothèque qui donne envie** — grandes cartes immersives, miniatures réelles, recherche instantanée, filtres par catégorie.
+- 🎬 **Un lecteur cinématique** — plein écran 9:16, glow ambiant tiré de la vidéo, contrôles minimalistes. Premium, pas bricolé.
+- 🏷️ **Range comme tu penses** — À revoir, Inspiration, Muscu, Business, Humour, Idées… crée, renomme, recolore tes catégories.
+- 🔒 **Déverrouillage Face ID** — ton vault s'ouvre d'un regard. Rien ne fuit, rien n'est public.
+- 📴 **Installable & offline-ready** — vraie PWA : ajoute-la à l'écran d'accueil, elle se comporte comme une app iPhone native.
+- 🏠 **Tu héberges, tu possèdes** — tes vidéos vivent sur **ton** serveur (volume local), pas chez un tiers.
 
-Copiez `.env.example` → `.env` et renseignez ces valeurs (le `.env` est
-gitignoré — ne le committez jamais).
+## 🎥 Comment ça marche
 
-## Développement local
-
-Backend (FastAPI) :
-```sh
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export $(grep -v '^#' ../.env | xargs)   # charge les variables
-uvicorn app.main:app --reload --port 8000
+```
+   📱 Partage un Reel        ⚙️  Réelgram récupère        🍿 Tu regardes
+      depuis Instagram   →      la vidéo + miniature   →     quand tu veux
+                                  (yt-dlp, en fond)         depuis ton vault
 ```
 
-Frontend (Vite) :
-```sh
-cd frontend
-npm install
-npm run dev
-```
+1. **Partage** le lien Instagram via la feuille de partage iOS (ou colle-le dans l'app).
+2. **Réelgram sauvegarde** : analyse → récupération → miniature → prêt. Progression élégante, zéro attente bloquante.
+3. **Tu regardes**, classes, renommes ou supprimes — c'est ta bibliothèque.
 
-Le serveur de dev Vite proxifie `/api` vers `http://localhost:8000`
-(cf. `vite.config.ts`), reproduisant la topologie de prod (même origine).
+## 🎨 Direction artistique
 
-Alternative tout-en-un avec Docker (reproduit exactement la prod) :
-```sh
-docker compose up --build   # web sur un port mappé, api interne
-```
+Dark mode profond presque noir, accents en dégradé **rose → orange → violet**, glassmorphism subtil, coins très arrondis, micro-transitions soignées. Inspiré de l'élégance de Linear, Raycast et Things — l'effet wow vient du **polish**, pas de la surcharge.
 
-## Déploiement — Coolify depuis GitHub
+<div align="center">
+<img src="design-reference/project/screenshots/pwa-lib.png" width="280" alt="Bibliothèque Réelgram" />
+</div>
 
-La cible est un déploiement « d'un coup » depuis le repo GitHub :
+## 🧱 Sous le capot
 
-1. **Poussez le repo sur GitHub** (le `docker-compose.yml` est à la racine, avec
-   des build contexts relatifs `./frontend` et `./backend` — pas d'image
-   pré-poussée, pas de Nixpacks).
-2. Dans Coolify, créez une ressource **« Docker Compose »** et pointez-la sur le
-   repo GitHub (branche de prod). Coolify lit le `docker-compose.yml` et **build
-   depuis les sources**.
-3. **Variables d'environnement** : définissez-les dans l'UI Coolify (toutes
-   celles de `.env.example` : `SUPABASE_*`, `MEDIA_TOKEN_SECRET`, `MAX_VIDEO_MB`,
-   `API_URL`, `ALLOW_SIGNUPS`, et optionnellement les cookies IG). Les secrets
-   restent hors du repo.
-4. **Domaine** : mappez votre domaine **sur le service `web` uniquement**.
-   `api` reste interne. Coolify/Traefik gère le TLS.
-5. **Déployez.** Les healthchecks doivent passer `healthy` (api : `/api/health`).
-6. **Volume** : vérifiez que `reelgram-media` est bien persistant (les vidéos
-   survivent aux redéploiements).
+| Couche | Techno |
+|--------|--------|
+| **App** | PWA Vite + React + TypeScript, installable, Face ID (WebAuthn) |
+| **API** | FastAPI + **yt-dlp** + ffmpeg — récupération vidéo, miniatures, streaming HTTP range derrière URLs signées |
+| **Données** | Supabase Cloud — Auth email/mot de passe + Postgres, isolation **multi-compte par RLS** |
+| **Vidéos** | Stockées sur un **volume local** (pas dans le cloud) |
+| **Déploiement** | Docker Compose, **Coolify-ready** depuis GitHub — `web` (nginx + PWA, reverse-proxy `/api`) + `api` interne + volume persistant |
 
-Vérifications post-déploiement :
-- `https://<domaine>/` sert la PWA.
-- `https://<domaine>/api/health` → `{"status":"ok"}` (via le proxy nginx, même
-  origine — prouve que `web` joint `api`).
-- `env.js` (`https://<domaine>/env.js`) reflète vos variables d'env.
+Même origine (pas de CORS), config injectée au runtime (une seule image pour tous les environnements), `api` jamais exposé publiquement.
 
-## Installation iOS / PWA & Raccourci de partage
+## 🚀 Mise en ligne en quelques minutes
 
-Voir **[`docs/ios-shortcut.md`](docs/ios-shortcut.md)** : installer la PWA sur
-l'écran d'accueil et créer un Raccourci iOS pour envoyer un Reel vers le vault
-depuis la feuille de partage Instagram (authentifié par un token personnel
-généré dans l'app).
+1. Crée un projet **Supabase** → applique `supabase/migrations/0001_init.sql`.
+2. Renseigne les variables (`.env.example` → secrets dans l'UI Coolify), dont `MEDIA_TOKEN_SECRET` (`openssl rand -hex 32`).
+3. Sur **Coolify** : ressource *Docker Compose* pointée sur ce repo → déploie → mappe ton domaine sur `web`.
 
-## Cookies Instagram (optionnel)
+👉 **Guide complet : [`docs/DEPLOY.md`](docs/DEPLOY.md)**
 
-Certains Reels (privés, age-gated, ou rate-limités) nécessitent des cookies de
-session Instagram pour que yt-dlp puisse les récupérer.
+## 📱 Raccourci iOS
 
-1. Exportez vos cookies Instagram au **format Netscape** (`cookies.txt`), par
-   exemple via une extension navigateur « Get cookies.txt ».
-2. Placez le fichier sur l'hôte et pointez `IG_COOKIES_HOST_PATH` dessus.
-3. Dans `docker-compose.yml`, **décommentez** la ligne de montage du service
-   `api` :
-   ```yaml
-   - ${IG_COOKIES_HOST_PATH}:/secrets/ig_cookies.txt:ro
-   ```
-4. Réglez `IG_COOKIES_FILE=/secrets/ig_cookies.txt` (chemin **dans** le
-   conteneur).
+Envoie n'importe quel Reel vers ton vault depuis la feuille de partage Instagram, en un tap.
+👉 **Recette pas-à-pas : [`docs/ios-shortcut.md`](docs/ios-shortcut.md)**
 
-Laissé désactivé par défaut (`IG_COOKIES_HOST_PATH=/dev/null`,
-`IG_COOKIES_FILE` vide) pour que la stack démarre sans fichier de cookies. Sous
-Coolify, montez le fichier de cookies via un *Persistent Storage* / *File mount*
-et réglez `IG_COOKIES_FILE` en conséquence.
+## 🔒 Privé par conception
 
-## Documentation
+Aucun compte public, aucun feed, aucun tracking. Chaque compte est **isolé par Row-Level Security** : tu ne vois que tes vidéos. Les médias sont servis derrière des **URLs signées** à durée de vie courte. Ton vault, tes règles.
 
-- **Specs** : `docs/superpowers/specs/` — commencer par
-  `2026-06-07-reelgram-design.md` (data model, API, flows, variables d'env).
-- **Référence visuelle** : `design-reference/` — vérité UI, **ne pas modifier**.
-- **Migrations Supabase** : `supabase/migrations/`.
-- **Raccourci iOS** : `docs/ios-shortcut.md`.
+---
+
+<div align="center">
+
+**Réelgram** — *« ok, c'est exactement ce qu'il me fallait. »*
+
+</div>
