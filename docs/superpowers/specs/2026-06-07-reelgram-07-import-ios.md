@@ -1,4 +1,4 @@
-# Spec 06 — Flux Import + Raccourci iOS
+# Spec 07 — Flux Import + Raccourci iOS
 
 > Lis `2026-06-07-reelgram-design.md` (§5 contrat d'API). Dépend de Spec 02, 04, 05.
 > Écran : `design-reference/project/screens-import.jsx`.

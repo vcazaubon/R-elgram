@@ -16,15 +16,16 @@ déconnexion) — la seule UI en plus du mockup.
   `Authorization: Bearer <getAccessToken()>`.
 - Méthodes : `getMediaUrl(videoId) → {stream_url, thumb_url}`,
   `ingest(url, categoryId)`, `ingestStatus(id)`, `listTokens()`, `createToken(label)`,
-  `deleteToken(id)`. (ingest/status utilisés en Spec 06.)
+  `deleteToken(id)`. (ingest/status utilisés en Spec 07.)
 
 ### 2. Data layer Supabase → `frontend/src/lib/db.ts`
 Fonctions typées (RLS implicite via session) :
 - `listVideos(): Video[]` — `select * from videos order by created_at desc`.
 - `listCategories(): Category[]` — `order by position`.
 - `updateVideo(id, {title?|category_id?})`.
-- `deleteVideo(id)` — supprime la row (le fichier reste sur le volume ; option :
-  endpoint backend de purge — **hors scope V1**, documenter en TODO).
+- `deleteVideo(id)` — **délégué à la Spec 06** : passe par l'endpoint backend
+  `DELETE /api/videos/{id}` qui purge la row **+ le fichier + la miniature**.
+  Ne **pas** faire de delete Supabase direct ici.
 - `createCategory(label)`, `renameCategory(id, label)`, `deleteCategory(id)`.
 - **Temps réel** : s'abonner aux changements de `videos` (supabase realtime) pour
   refléter les nouvelles vidéos ingérées et les transitions de `status`. À défaut,
@@ -39,7 +40,7 @@ Fonctions typées (RLS implicite via session) :
   liste principale (au choix — recommandé : badge « … » + non cliquable tant que
   pas `ready`).
 - Si `listVideos()` vide → afficher `EmptyScreen`.
-- FAB « Ajouter un lien » → route `import` (Spec 06).
+- FAB « Ajouter un lien » → route `import` (Spec 07).
 - Le bouton header `sparkle` (Design Direction) est **remplacé** par un bouton
   **Compte** (avatar/cercle) ouvrant la feuille Compte (§6). (Garder Design
   Direction accessible seulement si on l'a porté, sinon le retirer.)
@@ -65,9 +66,9 @@ Bottom sheet (même style que `PlayerSheet`) ouvert depuis le bouton Compte :
 - Affiche l'email du user.
 - Section **Raccourci iOS** : bouton « Générer un token » → `createToken()` →
   affiche le token **une seule fois** (copier) + lien/texte vers le guide de setup
-  (le guide détaillé est livré en Spec 06). Liste des tokens existants avec
+  (le guide détaillé est livré en Spec 07). Liste des tokens existants avec
   révocation. *(La génération in-app du token vit ici ; la recette du Raccourci est
-  en Spec 06.)*
+  en Spec 07.)*
 - Bouton **Déconnexion** (`signOut`).
 - Optionnel : toggle « Activer Face ID » (enrôlement WebAuthn, cf. Spec 04 §4).
 

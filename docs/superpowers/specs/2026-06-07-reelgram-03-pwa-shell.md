@@ -22,10 +22,10 @@ spec, l'app tourne en local et **ressemble exactement** au mockup, sans backend 
 - `frontend/src/lib/config.ts` : lit `window.__ENV__` avec fallback dev
   (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `API_URL='/api'`, `ALLOW_SIGNUPS`).
 - `frontend/public/env.js` (dev) : valeurs depuis `.env` local ; en prod, généré
-  par `docker-entrypoint.sh` (Spec 07).
+  par `docker-entrypoint.sh` (Spec 08).
 - **Proxy dev** : dans `vite.config.ts`, ajouter `server.proxy['/api'] →
   http://localhost:8000` pour que `API_URL='/api'` marche en `npm run dev` (le
-  backend tourne en local sur :8000). En prod, c'est nginx qui proxifie (Spec 07).
+  backend tourne en local sur :8000). En prod, c'est nginx qui proxifie (Spec 08).
 
 ### 3. Styles
 - Copier `design-reference/project/styles.css` **verbatim** dans
@@ -53,7 +53,7 @@ Porter en TSX, avec **données mock** (reprendre `VIDEOS`/`CATEGORIES` de `data.
 - `EmptyScreen` (hero + 3 étapes + CTA) — `screens-main.jsx`.
 - `CategoriesScreen` (liste + add/rename/delete inline) — `screens-main.jsx`.
 - `ImportScreen` (form + progression 4 étapes + erreur) — `screens-import.jsx`
-  (en mock : la progression est simulée comme dans le proto ; branchée en Spec 06).
+  (en mock : la progression est simulée comme dans le proto ; branchée en Spec 07).
 - `PlayerScreen` (lecteur 9:16, scrub, action row, bottom sheets) — `screens-player.jsx`
   (en mock : `<Thumb>` placeholder ; vrai `<video>` branché en Spec 05).
 - `LoginScreen` — `screens-login.jsx` (en mock : `onEnter` direct ; branché en Spec 04).
@@ -75,7 +75,7 @@ Reprendre la logique de `design-reference/project/pwa/pwa-app.jsx` :
   (`apple-mobile-web-app-capable`, `status-bar-style black-translucent`,
   `viewport-fit=cover`, `apple-touch-icon`, `theme-color`).
 - Service worker : precache du shell (vite-plugin-pwa génère Workbox). Runtime
-  caching de l'API ajouté/affiné en Spec 06/07 si utile (au minimum, ne pas
+  caching de l'API ajouté/affiné en Spec 07/08 si utile (au minimum, ne pas
   cacher `/api`).
 
 ## Critères d'acceptation

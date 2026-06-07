@@ -16,7 +16,7 @@ Aucune logique applicative (frontend/backend) — uniquement structure, SQL, env
 
 ### 1. Squelette du repo
 Créer l'arborescence de `Design maître §3` (dossiers vides + `.gitkeep` si besoin).
-Créer un `README.md` racine minimal (sera complété par Spec 07) pointant vers
+Créer un `README.md` racine minimal (sera complété par Spec 08) pointant vers
 `docs/superpowers/specs/`.
 
 ### 2. Migrations Supabase — `supabase/migrations/0001_init.sql`

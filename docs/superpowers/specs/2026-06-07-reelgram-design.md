@@ -170,6 +170,7 @@ Auth : `Authorization: Bearer <supabase_jwt>` **ou** `X-Reelgram-Token: <token p
 | GET  | `/api/videos/{id}/media-url` | JWT | — | `{ stream_url, thumb_url }` (URLs signées, ~1h) |
 | GET  | `/api/videos/{id}/stream` | **media token** (`?t=`) | Range supporté | flux vidéo (206 Partial Content) |
 | GET  | `/api/videos/{id}/thumb` | **media token** (`?t=`) | — | image jpeg |
+| DELETE | `/api/videos/{id}` | JWT ou token | — | `204` — **purge complète** : row + fichier vidéo + miniature (cf. Spec 06) |
 | GET  | `/api/tokens` | JWT | — | `[{ id, label, created_at, last_used_at }]` |
 | POST | `/api/tokens` | JWT | `{ label? }` | `{ id, token }` (**plaintext renvoyé une seule fois**) |
 | DELETE | `/api/tokens/{id}` | JWT | — | `204` |
@@ -216,7 +217,7 @@ n'envoient pas). Validé par le backend sur `/stream` et `/thumb`.
 | `IG_COOKIES_FILE` | chemin vers cookies.txt Instagram (optionnel) |
 | `MAX_VIDEO_MB` | garde-fou taille (défaut `300`) |
 
-`.env.example` documente tout (cf. Spec 07).
+`.env.example` documente tout (cf. Spec 08).
 
 ---
 
@@ -229,13 +230,17 @@ n'envoient pas). Validé par le backend sur `/stream` et `/thumb`.
 | 03 | PWA shell & design system (Vite+React+TS, tokens, composants, manifest/SW, données mock) | 01 |
 | 04 | Auth (email/mdp + Face ID WebAuthn + guard + isolation) | 01, 03 |
 | 05 | Bibliothèque / Catégories / Lecteur (Supabase CRUD + lecture via backend) + feuille Compte | 02, 03, 04 |
-| 06 | Flux Import + Raccourci iOS (ingest + progression + token UI) | 02, 04, 05 |
-| 07 | Docker & Coolify (Dockerfiles, compose, nginx proxy, healthchecks, README) | 02, 03 |
+| 06 | Suppression complète (purge fichier + miniature + row via endpoint backend) | 02, 04, 05 |
+| 07 | Flux Import + Raccourci iOS (ingest + progression + token UI) | 02, 04, 05 |
+| 08 | Docker & Coolify (Dockerfiles, compose, nginx proxy, healthchecks, README) | 02, 03 |
 
 ### Critères de succès globaux
 1. `docker compose up` lance `web` + `api` ; `web` sert la PWA ; `/api/health` répond.
 2. Inscription/connexion email-mdp fonctionne ; chaque compte ne voit que ses données (RLS).
 3. Coller une URL Insta dans l'app → progression 4 étapes → vidéo lisible dans le lecteur.
 4. Le Raccourci iOS POST une URL → la vidéo apparaît dans le vault du bon compte.
-5. Rendu **pixel-perfect** vs `design-reference/`.
-6. Déployable sur Coolify via `docker-compose.yml` (volume persistant pour les vidéos).
+5. Supprimer une vidéo purge **complètement** : row + fichier + miniature (Spec 06).
+6. Rendu **pixel-perfect** vs `design-reference/`.
+7. **Coolify-first depuis un repo GitHub** : Coolify build le repo via
+   `docker-compose.yml` (contexts relatifs) ; volume `reelgram-media` persistant.
+   Variables d'env définies dans l'UI Coolify. (Le push GitHub se fera plus tard.)

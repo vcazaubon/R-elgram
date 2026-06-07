@@ -12,7 +12,7 @@ sert les médias en HTTP range derrière des URLs signées. Plus la gestion des
 
 ## Stack
 Python 3.12, FastAPI, uvicorn, `yt-dlp`, `PyJWT`, `supabase` (client py),
-`httpx`. `ffmpeg` installé via le système (cf. Dockerfile, Spec 07).
+`httpx`. `ffmpeg` installé via le système (cf. Dockerfile, Spec 08).
 
 `backend/requirements.txt` :
 ```
@@ -100,7 +100,10 @@ Monte toutes les routes du `Design maître §5` sous `/api`. Endpoints :
 - `GET /api/videos/{id}/thumb` (media token) : sert le jpeg.
 - routes `tokens`.
 
-CORS : non requis (same-origin via nginx, cf. Spec 07). Garder une option
+> `DELETE /api/videos/{id}` (purge complète row + fichier + miniature) est ajouté
+> par la **Spec 06** ; structure `main.py` pour qu'on puisse l'y greffer.
+
+CORS : non requis (same-origin via nginx, cf. Spec 08). Garder une option
 `CORS_ORIGINS` désactivée par défaut au cas où on déploie en sous-domaines séparés.
 
 ## Critères d'acceptation

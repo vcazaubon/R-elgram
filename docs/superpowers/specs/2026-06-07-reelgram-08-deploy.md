@@ -1,4 +1,4 @@
-# Spec 07 — Docker & Coolify
+# Spec 08 — Docker & Coolify
 
 > Lis `2026-06-07-reelgram-design.md` (§3 structure, §6 env). Dépend de Spec 02, 03.
 
@@ -7,6 +7,13 @@ Rendre le projet **déployable d'un coup sur Coolify** via `docker-compose.yml` 
 `web` (nginx servant la PWA + reverse-proxy `/api`) + `api` (FastAPI) + un
 **volume persistant** pour les vidéos. Avec healthchecks, config runtime, et un
 README/guide de déploiement.
+
+> **Coolify-first depuis un repo GitHub.** La cible est : Coolify pointe sur le
+> repo GitHub, lit le `docker-compose.yml` à la racine et **build depuis les
+> sources** (contexts relatifs `./frontend`, `./backend` — pas d'image pré-poussée,
+> pas de Nixpacks). Les variables d'env sont définies dans l'UI Coolify. Le push
+> GitHub se fera plus tard ; structurer le repo pour ce flux (compose à la racine,
+> build contexts relatifs, `.env.example` complet, secrets hors repo).
 
 ## Tâches
 
@@ -119,7 +126,7 @@ Documenter dans le README : exporter les cookies Instagram au format Netscape
 - Déploiement Coolify : créer une ressource « Docker Compose », pointer le repo,
   définir les variables d'env, déployer ; mapper le domaine sur `web` ; vérifier
   le volume `reelgram-media` persistant.
-- Setup Raccourci iOS → renvoi vers `docs/ios-shortcut.md` (Spec 06).
+- Setup Raccourci iOS → renvoi vers `docs/ios-shortcut.md` (Spec 07).
 - Note cookies Instagram (§7).
 
 ## Critères d'acceptation
