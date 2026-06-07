@@ -3,12 +3,12 @@
 // AuthProvider wraps everything. The Gate decides, from the Supabase
 // session + the local Face ID lock, whether to show the LoginScreen
 // (email form OR biometric lock) or the authenticated app shell.
-// The shell screens (Library/Player/…) stay on mock data — Spec 05 wires
-// Supabase CRUD; here the guard only governs ENTRY.
+// The shell now runs on REAL data (Spec 05): videos/categories load via
+// db.ts (Supabase, RLS-scoped), live updates via realtime, the player streams
+// the real file via the backend (getMediaUrl), and metadata mutations persist.
 // navKey re-mounts the active screen to replay view-enter transitions.
 // ============================================================
-import { useEffect, useState } from 'react';
-import { CATEGORIES, VIDEOS, type MockCategory, type MockVideo } from './lib/mock';
+import { useCallback, useEffect, useState } from 'react';
 import type { TabId } from './components/TabBar';
 import { AuthProvider, useAuth } from './lib/auth';
 import { decideAuthMode } from './lib/authLogic';
@@ -19,17 +19,18 @@ import {
   unlockBiometric,
   clearBiometric,
 } from './lib/biometric';
+import { setAuthTokenGetter, getMediaUrl } from './lib/api';
+import * as db from './lib/db';
+import type { Category, Video } from './lib/types';
 import { LoginScreen } from './screens/LoginScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { EmptyScreen } from './screens/EmptyScreen';
 import { CategoriesScreen } from './screens/CategoriesScreen';
 import { ImportScreen } from './screens/ImportScreen';
 import { PlayerScreen } from './screens/PlayerScreen';
-import { DesignDirectionScreen } from './screens/DesignDirectionScreen';
+import { AccountSheet } from './screens/AccountSheet';
 
-type Route = 'library' | 'categories' | 'import' | 'player' | 'direction';
-
-const ADD_HEXES = ['#ff7eb3', '#ff9966', '#a78bfa', '#5ee2a0', '#5fa8ff', '#ffd166'];
+type Route = 'library' | 'categories' | 'import' | 'player';
 
 function userKeyOf(id: string | undefined | null): string | null {
   return id ? `u:${id}` : null;
@@ -44,8 +45,13 @@ export default function App() {
 }
 
 function Gate() {
-  const { session, user, loading, signOut } = useAuth();
+  const { session, user, loading, signOut, getAccessToken } = useAuth();
   const userKey = userKeyOf(user?.id);
+
+  // Wire the API client's JWT getter once, to the live Supabase session.
+  useEffect(() => {
+    setAuthTokenGetter(getAccessToken);
+  }, [getAccessToken]);
 
   // Local Face ID lock state, recomputed whenever the user changes.
   const [biometricEnrolled, setBiometricEnrolled] = useState(false);
@@ -152,33 +158,138 @@ interface AppShellProps {
 }
 
 function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellProps) {
-  const [videos, setVideos] = useState<MockVideo[]>(VIDEOS);
-  const [categories, setCategories] = useState<MockCategory[]>(CATEGORIES);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  // videoId → signed thumbnail URL, resolved on demand for ready videos.
+  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+
   // Matches the prototype: screens receive the active tab as a literal
   // ("library" / "categories"), so the tab value is never read here — only
   // the setter participates in navigation.
   const [, setTab] = useState<TabId>('library');
   const [route, setRoute] = useState<Route>('library');
-  const [current, setCurrent] = useState<MockVideo | null>(null);
-  const [importError, setImportError] = useState(false);
+  const [current, setCurrent] = useState<Video | null>(null);
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [importError] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [navKey, setNavKey] = useState(0);
 
   const go = (r: Route) => { setRoute(r); setNavKey((k) => k + 1); };
-  const openVideo = (v: MockVideo) => { setCurrent(v); go('player'); };
 
-  const handleSaved = (catId: string) => {
-    const nv: MockVideo = { id: 'v' + Date.now(), title: 'Morning routine — 5h du mat', cat: catId, date: "À l'instant", dur: '0:48', auteur: '@dontgiveup', g: ['#3a1f5c', '#7d3c8f'] };
-    setVideos((vs) => [nv, ...vs]); setTab('library'); go('library');
-  };
-  const updateVideo = (v: MockVideo) => { setVideos((vs) => vs.map((x) => (x.id === v.id ? v : x))); setCurrent(v); };
-  const deleteVideo = (v: MockVideo) => { setVideos((vs) => vs.filter((x) => x.id !== v.id)); go('library'); };
-  const renameCat = (id: string, label: string) => { if (label.trim()) setCategories((cs) => cs.map((c) => (c.id === id ? { ...c, label: label.trim() } : c))); };
-  const deleteCat = (id: string) => setCategories((cs) => cs.filter((c) => c.id !== id));
-  const addCat = (label: string) => {
-    setCategories((cs) => {
-      const hex = ADD_HEXES[cs.length % ADD_HEXES.length];
-      return [...cs, { id: 'c' + Date.now(), label, color: hex, hex }];
+  // ---- data loading --------------------------------------------------------
+
+  const refresh = useCallback(async () => {
+    try {
+      const [vs, cs] = await Promise.all([db.listVideos(), db.listCategories()]);
+      setVideos(vs);
+      setCategories(cs);
+    } catch {
+      // Keep the last known data; an empty first load shows the empty/loading UI.
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  // Realtime: refetch on any change to the user's videos (new ingests, status
+  // transitions, deletes). Falls back silently if realtime is unavailable.
+  useEffect(() => db.subscribeVideos(() => { void refresh(); }), [refresh]);
+
+  // Resolve thumbnail URLs for ready videos we haven't fetched yet.
+  useEffect(() => {
+    let active = true;
+    const pending = videos.filter((v) => v.status === 'ready' && !thumbUrls[v.id]);
+    if (pending.length === 0) return;
+    void Promise.all(
+      pending.map(async (v) => {
+        try {
+          const { thumb_url } = await getMediaUrl(v.id);
+          return [v.id, thumb_url] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((pairs) => {
+      if (!active) return;
+      const next: Record<string, string> = {};
+      for (const p of pairs) if (p) next[p[0]] = p[1];
+      if (Object.keys(next).length) setThumbUrls((prev) => ({ ...prev, ...next }));
     });
+    return () => { active = false; };
+  }, [videos, thumbUrls]);
+
+  // ---- actions -------------------------------------------------------------
+
+  const openVideo = async (v: Video) => {
+    setCurrent(v);
+    setStreamUrl(null);
+    go('player');
+    try {
+      const { stream_url } = await getMediaUrl(v.id);
+      setStreamUrl(stream_url);
+    } catch {
+      setStreamUrl(null);
+    }
+  };
+
+  const handleUpdateVideo = async (fields: { title?: string; category_id?: string | null }) => {
+    if (!current) return;
+    // Optimistic local update so the player reflects the change immediately.
+    const optimistic = { ...current, ...fields } as Video;
+    setCurrent(optimistic);
+    setVideos((vs) => vs.map((x) => (x.id === current.id ? optimistic : x)));
+    try {
+      const updated = await db.updateVideo(current.id, fields);
+      setCurrent(updated);
+      setVideos((vs) => vs.map((x) => (x.id === updated.id ? updated : x)));
+    } catch {
+      void refresh();
+    }
+  };
+
+  const handleDeleteVideo = async (v: Video) => {
+    setVideos((vs) => vs.filter((x) => x.id !== v.id));
+    go('library');
+    try {
+      await db.deleteVideo(v.id);
+    } catch {
+      void refresh();
+    }
+  };
+
+  const renameCat = async (id: string, label: string) => {
+    const next = label.trim();
+    if (!next) return;
+    setCategories((cs) => cs.map((c) => (c.id === id ? { ...c, label: next } : c)));
+    try {
+      await db.renameCategory(id, next);
+    } catch {
+      void refresh();
+    }
+  };
+
+  const deleteCat = async (id: string) => {
+    setCategories((cs) => cs.filter((c) => c.id !== id));
+    // Linked videos become uncategorised (FK on delete set null).
+    setVideos((vs) => vs.map((v) => (v.category_id === id ? { ...v, category_id: null } : v)));
+    try {
+      await db.deleteCategory(id);
+    } catch {
+      void refresh();
+    }
+  };
+
+  const addCat = async (label: string) => {
+    const next = label.trim();
+    if (!next) return;
+    try {
+      const created = await db.createCategory(next);
+      setCategories((cs) => [...cs, created]);
+    } catch {
+      void refresh();
+    }
   };
 
   const onTab = (t: TabId) => { setTab(t); go(t === 'categories' ? 'categories' : 'library'); };
@@ -187,27 +298,32 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
     <div className="app-root">
       <div key={navKey} style={{ position: 'absolute', inset: 0 }}>
         {route === 'library' && (
-          videos.length === 0
-            ? <EmptyScreen tab="library" onTab={onTab} onAdd={() => { setImportError(false); go('import'); }} />
-            : <LibraryScreen videos={videos} tab="library" onTab={onTab} onOpen={openVideo}
-                onAdd={() => { setImportError(false); go('import'); }} onDirection={() => go('direction')} />
+          !loading && videos.length === 0
+            ? <EmptyScreen tab="library" onTab={onTab} onAdd={() => go('import')} />
+            : <LibraryScreen videos={videos} categories={categories} thumbUrls={thumbUrls} loading={loading}
+                tab="library" onTab={onTab} onOpen={openVideo}
+                onAdd={() => go('import')} onAccount={() => setAccountOpen(true)} />
         )}
         {route === 'categories' && (
           <CategoriesScreen videos={videos} categories={categories} tab="categories" onTab={onTab}
             onRename={renameCat} onDelete={deleteCat} onAdd={addCat} />
         )}
-        {route === 'import' && <ImportScreen categories={categories} forceError={importError} onClose={() => go('library')} onSaved={handleSaved} />}
-        {route === 'player' && current && <PlayerScreen video={current} categories={categories} onBack={() => go('library')} onUpdate={updateVideo} onDelete={deleteVideo} />}
-        {route === 'direction' && <DesignDirectionScreen onBack={() => go('library')} />}
+        {route === 'import' && (
+          <ImportScreen categories={categories} forceError={importError}
+            onClose={() => go('library')} onSaved={() => { void refresh(); setTab('library'); go('library'); }} />
+        )}
+        {route === 'player' && current && (
+          <PlayerScreen video={current} categories={categories} streamUrl={streamUrl}
+            onBack={() => go('library')} onUpdate={handleUpdateVideo} onDelete={handleDeleteVideo} />
+        )}
       </div>
 
-      {/* Sign out lives in the Account sheet in Spec 05; expose a minimal hook
-          here so the guard's signOut path is reachable and not dead code. */}
-      <button
-        onClick={onSignOut}
-        aria-label="Se déconnecter"
-        style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 8px)', right: 14, zIndex: 30, width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-      />
+      {accountOpen && (
+        <AccountSheet
+          onClose={() => setAccountOpen(false)}
+          onSignOut={() => { setAccountOpen(false); onSignOut(); }}
+        />
+      )}
 
       {offerEnroll && <EnrollSheet onEnroll={onEnroll} onSkip={onSkipEnroll} />}
     </div>

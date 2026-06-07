@@ -8,12 +8,12 @@ import { useEffect, useState } from 'react';
 import { Icons } from '../components/Icons';
 import { StatusBar } from '../components/StatusBar';
 import { Thumb } from '../components/Thumb';
-import { catById, type MockCategory } from '../lib/mock';
+import type { Category } from '../lib/types';
 
 export interface ImportScreenProps {
   onClose: () => void;
   onSaved: (catId: string) => void;
-  categories: MockCategory[];
+  categories: Category[];
   forceError: boolean;
 }
 
@@ -23,7 +23,7 @@ const STEPS = ['Analyse du lien', 'Récupération de la vidéo', 'Création de l
 
 export function ImportScreen({ onClose, onSaved, categories, forceError }: ImportScreenProps) {
   const [url, setUrl] = useState('https://www.instagram.com/reel/C8xQ2pLm3aZ/');
-  const [cat, setCat] = useState('revoir');
+  const [cat, setCat] = useState(categories[0]?.id ?? '');
   const [phase, setPhase] = useState<Phase>('form');
   const [step, setStep] = useState(0);
 
@@ -49,7 +49,7 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
     return () => { cancelled = true; };
   }, [phase]);
 
-  const selectedCat = catById(cat);
+  const selectedCat = categories.find((c) => c.id === cat) ?? categories[0] ?? null;
 
   return (
     <div className="view modal-enter" style={{ background: 'var(--bg-0)' }}>
@@ -97,7 +97,7 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {categories.map((c) => (
                 <button key={c.id} onClick={() => setCat(c.id)} className={'pill' + (cat === c.id ? ' active' : '')}>
-                  <span className="cat-dot" style={{ background: cat === c.id ? 'rgba(10,10,12,0.55)' : c.hex }} />{c.label}
+                  <span className="cat-dot" style={{ background: cat === c.id ? 'rgba(10,10,12,0.55)' : c.color }} />{c.label}
                 </button>
               ))}
             </div>
@@ -145,7 +145,7 @@ interface ProgressBlockProps {
   steps: string[];
   step: number;
   done: boolean;
-  cat: MockCategory;
+  cat: Category | null;
 }
 
 function ProgressBlock({ steps, step, done, cat }: ProgressBlockProps) {
@@ -179,7 +179,7 @@ function ProgressBlock({ steps, step, done, cat }: ProgressBlockProps) {
       </div>
 
       <h2 style={{ marginTop: 16, fontSize: 21, fontWeight: 680, letterSpacing: '-0.02em' }}>{done ? 'Vidéo sauvegardée' : 'Sauvegarde en cours'}</h2>
-      <p style={{ marginTop: 8, fontSize: 14, color: 'var(--txt-2)' }}>{done ? 'Ajoutée à ' + cat.label : 'Ça prend quelques secondes…'}</p>
+      <p style={{ marginTop: 8, fontSize: 14, color: 'var(--txt-2)' }}>{done ? 'Ajoutée à ' + (cat?.label ?? 'ta bibliothèque') : 'Ça prend quelques secondes…'}</p>
 
       {/* step list */}
       <div style={{ marginTop: 30, width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
