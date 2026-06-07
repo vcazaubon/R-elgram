@@ -29,18 +29,17 @@ volume), pas par un delete Supabase direct.
 Ajouter la ligne :
 | DELETE | `/api/videos/{id}` | JWT ou token | — | `204` — purge row + fichier + miniature |
 
-### 3. Frontend → `frontend/src/lib/api.ts` + écrans
-- Ajouter `api.deleteVideo(id)` → `DELETE {API_URL}/api/videos/{id}` avec le JWT.
-- **PlayerScreen** (Spec 05) : l'action « Supprimer » (bottom sheet de confirmation
-  du design) appelle `api.deleteVideo(id)` au lieu d'un delete Supabase, puis
-  retour bibliothèque + refresh de la liste.
-- **LibraryScreen** (si une action de suppression rapide existe) : idem via l'API.
-- Mettre à jour la liste localement (retirer la vidéo) sans attendre un refetch complet.
+### 3. Frontend — DÉJÀ FAIT en Spec 05 (réconciliation)
+`api.deleteVideo(id)` (`DELETE {apiUrl}/videos/{id}` avec JWT), `db.deleteVideo`
+(délègue à `api.deleteVideo`, pas de delete Supabase direct) et le wiring
+PlayerScreen (sheet « Supprimer » → `deleteVideo` → retour library + refresh /
+realtime) sont **déjà implémentés** en Spec 05. **Ne pas réimplémenter.** Cette
+spec n'a plus qu'à : (a) ajouter l'endpoint backend, (b) vérifier le flux complet
+de bout en bout (front existant → backend → fichier purgé).
 
 ### 4. Cohérence avec Spec 05
-La fonction `deleteVideo` de `db.ts` (Spec 05) qui faisait un delete Supabase
-direct est **remplacée** par l'appel à `api.deleteVideo`. (Spec 05 a été annotée
-pour déléguer la suppression à cette spec.)
+RAS : `db.deleteVideo` appelle déjà `api.deleteVideo` (aucun delete Supabase
+direct). Il ne manque que l'endpoint backend (tâche 1).
 
 ## Critères d'acceptation
 - Supprimer une vidéo depuis le lecteur : la row disparaît **et** le fichier
