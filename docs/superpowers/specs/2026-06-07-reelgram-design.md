@@ -209,9 +209,9 @@ n'envoient pas). Validé par le backend sur `/stream` et `/thumb`.
 ### Backend
 | Var | Rôle |
 |-----|------|
-| `SUPABASE_URL` | URL projet Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | écriture des rows (bypass RLS) |
-| `SUPABASE_JWT_SECRET` | vérif des JWT (HS256) émis par Supabase |
+| `SUPABASE_URL` | URL projet Supabase (sert aussi de source JWKS pour vérifier les JWT) |
+| `SUPABASE_SERVICE_ROLE_KEY` | écriture des rows (bypass RLS) — `sb_secret_…` (nouveau) ou `service_role` (legacy) |
+| `SUPABASE_JWT_SECRET` | **optionnel** — uniquement projets legacy HS256. Sinon les JWT (ES256) sont vérifiés via le JWKS de `SUPABASE_URL` |
 | `MEDIA_TOKEN_SECRET` | HMAC des URLs média signées |
 | `DATA_DIR` | racine du stockage (défaut `/data`) |
 | `IG_COOKIES_FILE` | chemin vers cookies.txt Instagram (optionnel) |

@@ -31,9 +31,16 @@ suffit, aucun rebuild requis.
 
 ## Prérequis
 
-1. **Projet Supabase Cloud.** Récupérez dans *Project Settings → API* :
-   `SUPABASE_URL`, `SUPABASE_ANON_KEY` (anon public), `SUPABASE_SERVICE_ROLE_KEY`
-   (secret), et `SUPABASE_JWT_SECRET` (*JWT Secret*).
+1. **Projet Supabase Cloud.** Dans *Project Settings → API* / *API Keys* :
+   - `SUPABASE_URL` — Project URL.
+   - `SUPABASE_ANON_KEY` — clé **publique** : `sb_publishable_…` (nouveaux projets)
+     ou la clé `anon` `eyJ…` (projets legacy).
+   - `SUPABASE_SERVICE_ROLE_KEY` — clé **secrète** serveur : `sb_secret_…`
+     (nouveaux projets) ou `service_role` `eyJ…` (legacy).
+   - `SUPABASE_JWT_SECRET` — **optionnel**. Les projets récents signent les JWT en
+     **ES256 (clés asymétriques)** : le backend les vérifie via le **JWKS** dérivé
+     de `SUPABASE_URL`, donc laissez vide. Ne le remplissez que pour un projet
+     **legacy** signant en HS256.
 2. **Migration appliquée.** Exécutez `supabase/migrations/0001_init.sql` sur le
    projet (tables, RLS, trigger des catégories par défaut). Voir
    `supabase/migrations/README.md`.
