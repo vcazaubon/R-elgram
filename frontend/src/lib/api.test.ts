@@ -20,7 +20,7 @@ import * as api from './api';
 
 beforeEach(() => {
   api.setAuthTokenGetter(async () => 'JWT123');
-  (global as unknown as { fetch: unknown }).fetch = vi.fn();
+  (globalThis as unknown as { fetch: unknown }).fetch = vi.fn();
 });
 
 describe('ingest', () => {
