@@ -148,6 +148,32 @@ export const Icons = {
       <rect x="17" y="2.5" width="3" height="14.5" rx="1" />
     </Ico>
   ),
+  user: (p: IconProps) => (
+    <Ico {...p}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20a8 8 0 0 1 16 0" />
+    </Ico>
+  ),
+  copy: (p: IconProps) => (
+    <Ico {...p}>
+      <rect x="9" y="9" width="11" height="11" rx="2.5" />
+      <path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" />
+    </Ico>
+  ),
+  logout: (p: IconProps) => (
+    <Ico {...p}>
+      <path d="M15 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2" />
+      <path d="M10 17l-5-5 5-5" />
+      <path d="M5 12h11" />
+    </Ico>
+  ),
+  key: (p: IconProps) => (
+    <Ico {...p}>
+      <circle cx="8" cy="8" r="4.5" />
+      <path d="M11.2 11.2L20 20" />
+      <path d="M16.5 16.5l2-2M14.5 14.5l2-2" />
+    </Ico>
+  ),
 } satisfies Record<string, (p: IconProps) => ReactNode>;
 
 export type IconName = keyof typeof Icons;
