@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-from fastapi import Response
+from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from .config import get_settings
@@ -38,7 +38,12 @@ def _b64url_decode(data: str) -> bytes:
 
 
 def _secret() -> bytes:
-    return get_settings().media_token_secret.encode("utf-8")
+    secret = get_settings().media_token_secret
+    if not secret:
+        # Refuse de signer/vérifier avec une clé vide : sinon les tokens média
+        # seraient forgeables si la var d'env manquait en production.
+        raise RuntimeError("MEDIA_TOKEN_SECRET is not set")
+    return secret.encode("utf-8")
 
 
 def _sign(payload_b64: str) -> str:
@@ -109,7 +114,11 @@ def stream_file(path: Path, range_header: Optional[str], media_type: str = "appl
     Returns a 206 ``StreamingResponse`` when a valid Range header is supplied,
     otherwise a 200 full-body streaming response. Reads in chunks.
     """
-    file_size = path.stat().st_size
+    try:
+        file_size = path.stat().st_size
+    except (FileNotFoundError, OSError) as exc:
+        # TOCTOU : le fichier a pu disparaître après le contrôle d'existence.
+        raise HTTPException(status_code=404, detail="media not found") from exc
     parsed = _parse_range(range_header, file_size) if range_header else None
 
     if parsed is None:

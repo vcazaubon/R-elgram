@@ -133,6 +133,11 @@ async def run_ingest(video_id: str, user_id: str, url: str) -> None:
             _download, url, video_path, settings.ig_cookies_file, settings.max_video_mb
         )
 
+        # yt-dlp peut abandonner (ex. max_filesize dépassé) sans toujours lever :
+        # on vérifie qu'un fichier non-vide a bien été produit pour une erreur claire.
+        if not video_path.exists() or video_path.stat().st_size == 0:
+            raise RuntimeError("aucun fichier téléchargé (taille max dépassée ou vidéo indisponible)")
+
         supa.update_video(video_id, {"status": "thumbnailing"})
         await asyncio.to_thread(_thumbnail, video_path, thumb_path)
         color = await asyncio.to_thread(_dominant_color, video_path)
