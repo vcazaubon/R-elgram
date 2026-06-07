@@ -6,6 +6,7 @@ without ever propagating an exception.
 """
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -73,6 +74,7 @@ async def test_run_ingest_happy_path(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "_download", fake_download)
     monkeypatch.setattr(ingest, "_thumbnail", fake_thumbnail)
     monkeypatch.setattr(ingest, "_dominant_color", fake_color)
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
 
     await ingest.run_ingest("vid-1", "user-7", "https://www.instagram.com/reel/abc/")
 
@@ -103,6 +105,7 @@ async def test_run_ingest_title_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "_download", fake_download)
     monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
     monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
 
     await ingest.run_ingest("vid-2", "user-7", "https://instagram.com/p/xyz/")
 
@@ -126,6 +129,7 @@ async def test_run_ingest_title_truncated(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "_download", fake_download)
     monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
     monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
 
     await ingest.run_ingest("vid-3", "user-7", "https://instagram.com/p/xyz/")
 
@@ -191,6 +195,84 @@ def test_download_without_cookies_arg(monkeypatch, tmp_path):
     ingest._download("https://x/reel", tmp_path / "v.mp4", None, 300)
 
     assert "cookiefile" not in capture["opts"]
+
+
+# --- iOS compatibility: never leave a non-H.264 file on disk -----------------
+#     iOS Safari only decodes H.264/HEVC; yt-dlp can pick VP9/AV1 from Instagram
+#     which shows a BLACK player on iPhone. The pipeline must normalise to H.264
+#     (re-encode) or at least remux to faststart when already H.264.
+
+def test_download_prefers_h264(monkeypatch, tmp_path):
+    capture = {}
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_ytdlp(capture))
+
+    ingest._download("https://x/reel", tmp_path / "v.mp4", None, 300)
+
+    # The format selection must prefer the avc1 (H.264) rendition iOS can play.
+    assert "avc1" in capture["opts"]["format"]
+
+
+def test_ensure_ios_compatible_reencodes_non_h264(monkeypatch, tmp_path):
+    monkeypatch.setattr(ingest, "_video_codec", lambda p: "vp9")
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        Path(cmd[-1]).write_bytes(b"reencoded")  # simulate ffmpeg writing temp
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(ingest.subprocess, "run", fake_run)
+    src = tmp_path / "v.mp4"
+    src.write_bytes(b"vp9file")
+
+    ingest._ensure_ios_compatible(src)
+
+    assert "libx264" in captured["cmd"]          # re-encode to H.264
+    assert "+faststart" in captured["cmd"]
+    assert src.read_bytes() == b"reencoded"      # replaced in place
+
+
+def test_ensure_ios_compatible_remuxes_when_already_h264(monkeypatch, tmp_path):
+    monkeypatch.setattr(ingest, "_video_codec", lambda p: "h264")
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        Path(cmd[-1]).write_bytes(b"remuxed")
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(ingest.subprocess, "run", fake_run)
+    src = tmp_path / "v.mp4"
+    src.write_bytes(b"h264file")
+
+    ingest._ensure_ios_compatible(src)
+
+    assert "libx264" not in captured["cmd"]       # no re-encode
+    assert "copy" in captured["cmd"]              # stream-copy remux
+    assert "+faststart" in captured["cmd"]        # moov atom to the front
+
+
+async def test_run_ingest_makes_video_ios_compatible(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    def fake_download(url, dest, cookies, max_mb):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"\x00\x01\x02fakevideo")
+        return {"title": "t", "duration": 5}
+
+    seen = {}
+    monkeypatch.setattr(ingest, "_download", fake_download)
+    monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: seen.setdefault("path", p))
+
+    await ingest.run_ingest("vid-9", "user-7", "https://instagram.com/reel/x/")
+
+    assert rec.final["status"] == "ready"
+    # the downloaded file was normalised before being marked ready
+    assert seen.get("path") == tmp_path / "videos/user-7/vid-9.mp4"
 
 
 async def test_run_ingest_download_error(monkeypatch, tmp_path):
