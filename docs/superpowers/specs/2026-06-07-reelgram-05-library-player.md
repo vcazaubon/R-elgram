@@ -9,6 +9,17 @@ CRUD métadonnées via **Supabase JS (RLS)**, lecture de la vidéo via le **back
 (URLs signées). Ajouter la **feuille « Compte »** (email, génération de token iOS,
 déconnexion) — la seule UI en plus du mockup.
 
+## État actuel du frontend (après Spec 03 — réconciliation)
+Les écrans (`LibraryScreen`, `EmptyScreen`, `CategoriesScreen`, `PlayerScreen`,
+`ImportScreen`) et `VideoCard` sont typés sur `MockVideo`/`MockCategory` de
+`frontend/src/lib/mock.ts` (champs proto `cat`/`g`/`date`/`dur`/`auteur`). **Migre-les
+vers les types réels** `Video`/`Category` de `src/lib/types.ts` (`category_id`,
+`thumb_color`, `author`, `duration_seconds`, `created_at`, `status`). `Thumb.tsx`
+accepte un objet `{ g:[string,string] }` (dégradé) ; pour la vraie miniature, soit
+afficher un `<img src=thumb_url>`, soit dériver `g` depuis `thumb_color`. Les handlers
+mock de `App.tsx` (open/save/update/delete/rename/cat) sont à remplacer par les
+appels Supabase/API réels.
+
 ## Tâches
 
 ### 1. API client → `frontend/src/lib/api.ts`
