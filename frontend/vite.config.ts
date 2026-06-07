@@ -44,11 +44,27 @@ export default defineConfig({
     }),
   ],
   server: {
+    // Remote dev: bind all interfaces on a fixed port so it's reachable at
+    // http://<server-ip>:10009 (firewall opens 10009/tcp). strictPort: fail
+    // loudly instead of silently hopping to another port.
+    host: true,
+    port: 10009,
+    strictPort: true,
     proxy: {
+      // /api is proxied to the local FastAPI backend. The target is overridable
+      // via VITE_API_PROXY because the default :8000 can be taken by an
+      // unrelated service on shared hosts (e.g. the Coolify dashboard maps host
+      // :8000 → its own UI, which answers /api/* with a 404). Run the backend on
+      // a free port and point here:  VITE_API_PROXY=http://localhost:8001 vite
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_API_PROXY || 'http://localhost:8000',
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    host: true,
+    port: 10009,
+    strictPort: true,
   },
 });
