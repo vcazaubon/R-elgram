@@ -38,6 +38,9 @@ export function AccountSheet({ onClose, onSignOut }: AccountSheetProps) {
   const [freshToken, setFreshToken] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Exact backend ingest endpoint the iOS Shortcut must POST to.
+  const ingestUrl = `${window.location.origin}/api/ingest`;
+  const [urlCopied, setUrlCopied] = useState(false);
 
   // Face ID
   const [bioAvailable, setBioAvailable] = useState(false);
@@ -90,6 +93,17 @@ export function AccountSheet({ onClose, onSignOut }: AccountSheetProps) {
     }
   };
 
+  const handleCopyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(ingestUrl);
+      setUrlCopied(true);
+      window.setTimeout(() => setUrlCopied(false), 1600);
+    } catch {
+      // Clipboard unavailable: the URL stays visible for manual copy.
+      setUrlCopied(false);
+    }
+  };
+
   const handleRevoke = async (id: string) => {
     setTokensError(null);
     try {
@@ -136,8 +150,34 @@ export function AccountSheet({ onClose, onSignOut }: AccountSheetProps) {
             <Icons.key size={17} style={{ color: 'var(--a-violet)' }} /> Raccourci iOS
           </div>
           <p style={{ marginTop: 8, fontSize: 13.5, color: 'var(--txt-2)', lineHeight: 1.5 }}>
-            Génère un token pour le Raccourci « Partager vers Réelgram ». Le guide de configuration arrive bientôt.
+            Génère un token, puis crée un Raccourci iOS qui partage une vidéo Instagram vers ton vault.
           </p>
+
+          {/* exact ingest endpoint for the Shortcut (copyable) */}
+          <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 15, background: 'var(--bg-2)', border: '1px solid var(--hairline)' }}>
+            <div style={{ fontSize: 11.5, color: 'var(--txt-2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 7 }}>Endpoint du Raccourci (POST)</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <code style={{ flex: 1, minWidth: 0, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12.5, color: 'var(--txt-0)', wordBreak: 'break-all' }}>{ingestUrl}</code>
+              <button onClick={handleCopyUrl} aria-label="Copier l'URL de l'API" style={{ flex: '0 0 auto', width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', color: urlCopied ? '#0a0a0c' : 'var(--txt-0)', background: urlCopied ? 'var(--grad-accent)' : 'var(--bg-3)', border: '1px solid var(--hairline)' }}>
+                {urlCopied ? <Icons.check size={17} /> : <Icons.copy size={17} />}
+              </button>
+            </div>
+          </div>
+
+          {/* concise inline recipe + reference to the full guide */}
+          <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 15, background: 'var(--bg-1)', border: '1px solid var(--hairline)', fontSize: 13, color: 'var(--txt-2)', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--txt-2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Configuration du Raccourci</div>
+            <ol style={{ margin: 0, paddingLeft: 18 }}>
+              <li>Génère un token ci-dessous et copie-le.</li>
+              <li>Raccourcis iOS → nouveau → active « Afficher dans la feuille de partage » (entrée URL).</li>
+              <li>Action « Obtenir le contenu d'une URL » → <code style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>POST</code> vers l'endpoint ci-dessus.</li>
+              <li>En-têtes : <code style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>X-Reelgram-Token</code> + <code style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>Content-Type: application/json</code>.</li>
+              <li>Corps JSON : <code style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>{'{ "url": <Entrée> }'}</code>.</li>
+            </ol>
+            <div style={{ marginTop: 9, fontSize: 12.5, color: 'var(--txt-3)' }}>
+              Guide pas-à-pas complet : <code style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'var(--txt-2)' }}>docs/ios-shortcut.md</code>
+            </div>
+          </div>
 
           {/* freshly created token, shown once */}
           {freshToken && (
