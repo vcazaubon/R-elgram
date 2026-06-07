@@ -71,8 +71,16 @@ export async function listCategories(): Promise<Category[]> {
 }
 
 /**
+ * Accent palette for category chips. New categories cycle through it by
+ * position so each gets a distinct colour instead of all falling back to the
+ * DB default (#a78bfa). Kept in sync with the seed accents (cf. §4).
+ */
+const CATEGORY_PALETTE = ['#ff9966', '#a78bfa', '#5ee2a0', '#5fa8ff', '#ffd166', '#ff7eb3'];
+
+/**
  * Create a category. position is appended after the current max so it lands
- * last in the list (the seed categories occupy 0..5).
+ * last in the list (the seed categories occupy 0..5). The colour cycles through
+ * CATEGORY_PALETTE by position so each new category is visually distinct.
  */
 export async function createCategory(label: string): Promise<Category> {
   const { data: rows, error: posError } = await supabase
@@ -82,10 +90,11 @@ export async function createCategory(label: string): Promise<Category> {
     .limit(1);
   if (posError) throw new Error(posError.message);
   const nextPosition = (rows?.[0]?.position ?? -1) + 1;
+  const color = CATEGORY_PALETTE[nextPosition % CATEGORY_PALETTE.length];
 
   const { data, error } = await supabase
     .from('categories')
-    .insert({ label, position: nextPosition })
+    .insert({ label, position: nextPosition, color })
     .select()
     .single();
   return unwrap(data, error);

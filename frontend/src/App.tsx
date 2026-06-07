@@ -8,7 +8,7 @@
 // the real file via the backend (getMediaUrl), and metadata mutations persist.
 // navKey re-mounts the active screen to replay view-enter transitions.
 // ============================================================
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TabId } from './components/TabBar';
 import { AuthProvider, useAuth } from './lib/auth';
 import { decideAuthMode } from './lib/authLogic';
@@ -171,6 +171,9 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
   const [route, setRoute] = useState<Route>('library');
   const [current, setCurrent] = useState<Video | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  // Monotonic counter identifying the most recent openVideo request, so a stale
+  // async media-URL resolution can't clobber the currently displayed video.
+  const openVideoReq = useRef(0);
   const [importError] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [navKey, setNavKey] = useState(0);
@@ -226,11 +229,15 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
     setCurrent(v);
     setStreamUrl(null);
     go('player');
+    // Guard against a race when videos are opened in quick succession: a slow
+    // getMediaUrl for an earlier video must not overwrite the stream URL of the
+    // one now showing. Only the latest request is allowed to apply its result.
+    const reqId = ++openVideoReq.current;
     try {
       const { stream_url } = await getMediaUrl(v.id);
-      setStreamUrl(stream_url);
+      if (openVideoReq.current === reqId) setStreamUrl(stream_url);
     } catch {
-      setStreamUrl(null);
+      if (openVideoReq.current === reqId) setStreamUrl(null);
     }
   };
 
