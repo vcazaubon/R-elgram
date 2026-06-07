@@ -51,8 +51,8 @@ export function CategoriesScreen({ videos, categories, onTab, tab, onRename, onD
                   <div style={{ fontSize: 12.5, color: 'var(--txt-2)', marginTop: 2 }}>{count(c.id)} vidéo{count(c.id) > 1 ? 's' : ''}</div>
                 </div>
               )}
-              <button onClick={() => { setEditing(c.id); setDraft(c.label); }} style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', color: 'var(--txt-1)', background: 'var(--bg-3)', border: '1px solid var(--hairline)' }}><Icons.edit size={17} /></button>
-              <button onClick={() => onDelete(c.id)} style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', color: 'var(--txt-2)', background: 'var(--bg-3)', border: '1px solid var(--hairline)' }}><Icons.trash size={17} /></button>
+              <button onClick={() => { setEditing(c.id); setDraft(c.label); }} aria-label="Renommer la catégorie" style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', color: 'var(--txt-1)', background: 'var(--bg-3)', border: '1px solid var(--hairline)' }}><Icons.edit size={17} /></button>
+              <button onClick={() => onDelete(c.id)} aria-label="Supprimer la catégorie" style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', color: 'var(--txt-2)', background: 'var(--bg-3)', border: '1px solid var(--hairline)' }}><Icons.trash size={17} /></button>
             </div>
           ))}
 

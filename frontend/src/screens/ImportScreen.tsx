@@ -56,7 +56,7 @@ export function ImportScreen({ onClose, onSaved, categories, forceError }: Impor
       <StatusBar />
       {/* header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 18px 4px' }}>
-        <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'var(--bg-2)', border: '1px solid var(--hairline)', color: 'var(--txt-1)' }}>
+        <button onClick={onClose} aria-label="Fermer" style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'var(--bg-2)', border: '1px solid var(--hairline)', color: 'var(--txt-1)' }}>
           <Icons.close size={20} />
         </button>
         <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--txt-1)' }}>Importer</span>

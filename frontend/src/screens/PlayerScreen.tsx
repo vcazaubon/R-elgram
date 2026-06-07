@@ -50,13 +50,13 @@ export function PlayerScreen({ video, categories, onBack, onUpdate, onDelete }: 
       <StatusBar />
       {/* top bar */}
       <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 18px' }}>
-        <button onClick={onBack} style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', border: '1px solid var(--hairline)', color: '#fff' }}>
+        <button onClick={onBack} aria-label="Retour" style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', border: '1px solid var(--hairline)', color: '#fff' }}>
           <Icons.back size={20} />
         </button>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13.5, fontWeight: 560, color: 'rgba(255,255,255,0.8)' }}>
           <span className="cat-dot" style={{ background: cat.hex }} />{cat.label}
         </span>
-        <button onClick={() => setSheet('more')} style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', border: '1px solid var(--hairline)', color: '#fff' }}>
+        <button onClick={() => setSheet('more')} aria-label="Plus d'options" style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', border: '1px solid var(--hairline)', color: '#fff' }}>
           <Icons.more size={20} />
         </button>
       </div>
@@ -102,9 +102,9 @@ export function PlayerScreen({ video, categories, onBack, onUpdate, onDelete }: 
           <button onClick={() => setPlaying((p) => !p)} style={{ flex: 1, height: 54, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, fontSize: 15.5, fontWeight: 640, color: '#120a14', background: 'var(--grad-accent)' }}>
             {playing ? <><Icons.pause size={20} /> Pause</> : <><Icons.play size={19} /> Lire</>}
           </button>
-          <ActionBtn icon={Icons.edit} onClick={() => setSheet('rename')} />
-          <ActionBtn icon={Icons.tag} onClick={() => setSheet('category')} />
-          <ActionBtn icon={Icons.trash} onClick={() => setSheet('delete')} danger />
+          <ActionBtn icon={Icons.edit} onClick={() => setSheet('rename')} label="Renommer" />
+          <ActionBtn icon={Icons.tag} onClick={() => setSheet('category')} label="Changer de catégorie" />
+          <ActionBtn icon={Icons.trash} onClick={() => setSheet('delete')} danger label="Supprimer" />
         </div>
       </div>
 
@@ -124,11 +124,12 @@ interface ActionBtnProps {
   icon: (p: IconProps) => ReactNode;
   onClick: () => void;
   danger?: boolean;
+  label?: string;
 }
 
-function ActionBtn({ icon: Icon, onClick, danger }: ActionBtnProps) {
+function ActionBtn({ icon: Icon, onClick, danger, label }: ActionBtnProps) {
   return (
-    <button onClick={onClick} style={{ width: 54, height: 54, borderRadius: 16, display: 'grid', placeItems: 'center',
+    <button onClick={onClick} aria-label={label ?? 'Action'} style={{ width: 54, height: 54, borderRadius: 16, display: 'grid', placeItems: 'center',
       background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', border: '1px solid var(--hairline)',
       color: danger ? '#ff8a96' : '#fff' }}>
       <Icon size={21} />
