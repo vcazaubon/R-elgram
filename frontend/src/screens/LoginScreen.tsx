@@ -1,27 +1,87 @@
 // ============================================================
 // Réelgram — Login / unlock (private vault gate)
-// Ported from design-reference/project/screens-login.jsx.
-// Mock: onEnter is triggered directly (auth wired in Spec 04).
+// Visual ported pixel-perfect from design-reference/project/screens-login.jsx
+// (brand, ambient glow, gradient, rise anim, proto spinner). Actions are
+// real auth: email + password (Supabase) + an optional Face ID local lock.
+// Apple button and magic-link removed per Spec 04.
 // ============================================================
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Icons } from '../components/Icons';
 import { StatusBar } from '../components/StatusBar';
+import { config } from '../lib/config';
+import { useAuth } from '../lib/auth';
+import { mapAuthError } from '../lib/authLogic';
 
 export interface LoginScreenProps {
+  /** Called once authenticated AND (if applicable) biometrically unlocked. */
   onEnter: () => void;
+  /** When true, render the Face ID lock variant (session exists, credential enrolled). */
+  biometricLock?: boolean;
+  /** Attempt biometric unlock — resolves true on success. Provided by App. */
+  onBiometricUnlock?: () => Promise<boolean>;
 }
 
-type Mode = 'welcome' | 'email';
-type Loading = 'apple' | 'faceid' | 'email' | null;
+type Tab = 'signin' | 'signup';
+type Busy = 'submit' | 'faceid' | null;
 
-export function LoginScreen({ onEnter }: LoginScreenProps) {
-  const [mode, setMode] = useState<Mode>('welcome');
+const spinner = (light: boolean): CSSProperties => ({
+  width: 18,
+  height: 18,
+  borderRadius: '50%',
+  border: `2.4px solid ${light ? 'rgba(18,10,20,0.4)' : 'rgba(255,255,255,0.3)'}`,
+  borderTopColor: light ? '#120a14' : '#fff',
+  animation: 'spin 0.7s linear infinite',
+});
+
+export function LoginScreen({ onEnter, biometricLock = false, onBiometricUnlock }: LoginScreenProps) {
+  const { signIn, signUp } = useAuth();
+  // When locked, start on the Face ID view; password fallback can override.
+  const [locked, setLocked] = useState(biometricLock);
+  const [tab, setTab] = useState<Tab>('signin');
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState<Loading>(null);
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState<Busy>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
-  const trigger = (kind: Exclude<Loading, null>) => {
-    setLoading(kind);
-    setTimeout(onEnter, kind === 'faceid' ? 900 : 1100);
+  const signupEnabled = config.allowSignups;
+  const canSubmit = email.includes('@') && password.length >= 6 && busy === null;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setBusy('submit');
+    setError(null);
+    setInfo(null);
+    const action = tab === 'signup' && signupEnabled ? signUp : signIn;
+    const { error: err } = await action(email.trim(), password);
+    if (err) {
+      setBusy(null);
+      setError(mapAuthError(err));
+      return;
+    }
+    if (tab === 'signup' && signupEnabled) {
+      // If email confirmation is required, there is no session yet; surface it
+      // gently instead of dropping into an unauthenticated "enter".
+      setInfo("Compte créé. Si un email de confirmation t'est envoyé, valide-le pour continuer.");
+    }
+    setBusy(null);
+    // App's auth state listener decides the route; calling onEnter is harmless
+    // (it only navigates when a session is actually present).
+    onEnter();
+  };
+
+  const tryBiometric = async () => {
+    if (!onBiometricUnlock || busy) return;
+    setBusy('faceid');
+    setError(null);
+    const ok = await onBiometricUnlock();
+    setBusy(null);
+    if (ok) {
+      onEnter();
+    } else {
+      setError('Déverrouillage Face ID annulé ou échoué.');
+    }
   };
 
   return (
@@ -48,45 +108,69 @@ export function LoginScreen({ onEnter }: LoginScreenProps) {
 
         {/* auth actions */}
         <div className="rise" style={{ animationDelay: '0.16s', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 30px)', display: 'flex', flexDirection: 'column', gap: 11 }}>
-          {mode === 'welcome' && (
+          {locked ? (
             <>
-              {/* Face ID quick unlock */}
-              <button onClick={() => trigger('faceid')} style={{
+              {/* Face ID quick unlock (visual identical to proto primary button) */}
+              <button onClick={tryBiometric} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, height: 56, borderRadius: 18,
                 background: 'var(--grad-accent)', color: '#120a14', fontSize: 16.5, fontWeight: 660,
                 boxShadow: '0 14px 34px -12px rgba(255,126,179,0.5)',
               }}>
-                {loading === 'faceid'
-                  ? <span style={{ width: 18, height: 18, borderRadius: '50%', border: '2.4px solid rgba(18,10,20,0.4)', borderTopColor: '#120a14', animation: 'spin 0.7s linear infinite' }} />
+                {busy === 'faceid'
+                  ? <span style={spinner(true)} />
                   : <><FaceIdGlyph /> Déverrouiller avec Face ID</>}
               </button>
 
-              {/* Apple */}
-              <button onClick={() => trigger('apple')} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, height: 54, borderRadius: 16,
-                background: '#f4f4f6', color: '#0a0a0c', fontSize: 15.5, fontWeight: 600,
-              }}>
-                {loading === 'apple'
-                  ? <span style={{ width: 17, height: 17, borderRadius: '50%', border: '2.2px solid rgba(10,10,12,0.3)', borderTopColor: '#0a0a0c', animation: 'spin 0.7s linear infinite' }} />
-                  : <><AppleGlyph /> Continuer avec Apple</>}
+              {error && (
+                <p style={{ fontSize: 13.5, color: '#ff8a96', textAlign: 'center', lineHeight: 1.45, marginTop: 2 }}>{error}</p>
+              )}
+
+              <button onClick={() => { setLocked(false); setError(null); }} style={{ fontSize: 14, color: 'var(--txt-2)', padding: 10, fontWeight: 540 }}>
+                Utiliser le mot de passe
               </button>
-
-              <button className="btn-ghost" onClick={() => setMode('email')}>Continuer avec un e-mail</button>
             </>
-          )}
-
-          {mode === 'email' && (
+          ) : (
             <div className="view-enter" style={{ position: 'static', display: 'flex', flexDirection: 'column', gap: 11 }}>
+              {/* signin / signup toggle */}
+              {signupEnabled && (
+                <div style={{ display: 'flex', gap: 6, padding: 4, borderRadius: 14, background: 'var(--bg-2)', border: '1px solid var(--hairline)', marginBottom: 4 }}>
+                  {(['signin', 'signup'] as const).map((t) => (
+                    <button key={t} onClick={() => { setTab(t); setError(null); setInfo(null); }} style={{
+                      flex: 1, height: 38, borderRadius: 10, fontSize: 14.5, fontWeight: 600,
+                      color: tab === t ? '#120a14' : 'var(--txt-1)',
+                      background: tab === t ? 'var(--grad-accent)' : 'transparent',
+                    }}>
+                      {t === 'signin' ? 'Se connecter' : 'Créer un compte'}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 16px', height: 54, borderRadius: 16, background: 'var(--bg-2)', border: '1px solid var(--hairline-strong)' }}>
-                <input autoFocus value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="ton@email.com" inputMode="email"
+                <input autoFocus value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="ton@email.com" inputMode="email" autoComplete="email"
                   style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--txt-0)', fontSize: 16 }} />
               </div>
-              <button className="btn-primary" onClick={() => trigger('email')} style={{ opacity: email.includes('@') ? 1 : 0.55, pointerEvents: email.includes('@') ? 'auto' : 'none' }}>
-                {loading === 'email'
-                  ? <span style={{ width: 18, height: 18, borderRadius: '50%', border: '2.4px solid rgba(18,10,20,0.4)', borderTopColor: '#120a14', animation: 'spin 0.7s linear infinite' }} />
-                  : <>Recevoir le lien magique</>}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 16px', height: 54, borderRadius: 16, background: 'var(--bg-2)', border: '1px solid var(--hairline-strong)' }}>
+                <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Mot de passe"
+                  autoComplete={tab === 'signup' ? 'new-password' : 'current-password'}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+                  style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--txt-0)', fontSize: 16 }} />
+              </div>
+
+              {error && (
+                <p style={{ fontSize: 13.5, color: '#ff8a96', lineHeight: 1.45, padding: '0 2px' }}>{error}</p>
+              )}
+              {info && !error && (
+                <p style={{ fontSize: 13.5, color: 'var(--txt-1)', lineHeight: 1.45, padding: '0 2px' }}>{info}</p>
+              )}
+
+              <button className="btn-primary" onClick={() => void submit()}
+                style={{ opacity: canSubmit ? 1 : 0.55, pointerEvents: canSubmit ? 'auto' : 'none' }}>
+                {busy === 'submit'
+                  ? <span style={spinner(true)} />
+                  : <>{tab === 'signup' && signupEnabled ? 'Créer mon compte' : 'Se connecter'}</>}
               </button>
-              <button onClick={() => setMode('welcome')} style={{ fontSize: 14, color: 'var(--txt-2)', padding: 10, fontWeight: 540 }}>Retour</button>
             </div>
           )}
 
@@ -96,12 +180,6 @@ export function LoginScreen({ onEnter }: LoginScreenProps) {
         </div>
       </div>
     </div>
-  );
-}
-
-function AppleGlyph() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.9c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.8-3.5.8s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.2 0 2-1.1 2.8-2.2.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-1-2.5-3.8zM14.2 5.9c.6-.8 1-1.9.9-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.8-1.3z" /></svg>
   );
 }
 
