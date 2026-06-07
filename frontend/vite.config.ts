@@ -26,6 +26,15 @@ export default defineConfig({
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        // Web Share Target (best-effort, Android/PWA-capable): a shared link
+        // lands on "/" with the URL in ?import= — App reads it at boot and opens
+        // the Import screen pre-filled. iOS doesn't implement this; there the
+        // iOS Shortcut (docs/ios-shortcut.md) POSTs to /api/ingest instead.
+        share_target: {
+          action: '/',
+          method: 'GET',
+          params: { url: 'import', text: 'import', title: 'title' },
+        },
       },
       workbox: {
         // Never let the SPA navigation fallback (or precache) swallow API calls —
