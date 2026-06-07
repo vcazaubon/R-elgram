@@ -92,9 +92,18 @@ export async function createCategory(label: string): Promise<Category> {
   const nextPosition = (rows?.[0]?.position ?? -1) + 1;
   const color = CATEGORY_PALETTE[nextPosition % CATEGORY_PALETTE.length];
 
+  // categories.user_id is NOT NULL with no default, and RLS enforces
+  // `with check (auth.uid() = user_id)`. Unlike the seed categories (set by the
+  // handle_new_user trigger), a client insert must carry the owner explicitly —
+  // otherwise every insert is rejected and no category is ever created.
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError) throw new Error(authError.message);
+  const userId = auth?.user?.id;
+  if (!userId) throw new Error('Session expirée — reconnecte-toi pour créer une catégorie.');
+
   const { data, error } = await supabase
     .from('categories')
-    .insert({ label, position: nextPosition, color })
+    .insert({ user_id: userId, label, position: nextPosition, color })
     .select()
     .single();
   return unwrap(data, error);
