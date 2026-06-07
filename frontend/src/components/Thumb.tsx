@@ -3,11 +3,16 @@
 // Ported from design-reference/project/components.jsx.
 // ============================================================
 import type { CSSProperties, ReactNode } from 'react';
-import type { MockVideo } from '../lib/mock';
 import { Icons } from './Icons';
 
+/** Thumb only needs the gradient pair. Accepts a full MockVideo or a
+ *  gradient-only shape (used by the import preview / design direction). */
+export interface ThumbVideo {
+  g: [string, string];
+}
+
 export interface ThumbProps {
-  video: MockVideo;
+  video: ThumbVideo;
   radius?: string;
   showPlay?: boolean;
   scrim?: boolean;
