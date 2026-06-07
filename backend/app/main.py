@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 
 from . import auth, ingest, media, supa
-from .config import get_settings
+from .config import get_settings, service_role_key_issue
 from .models import (
     IngestRequest,
     IngestResponse,
@@ -196,7 +196,18 @@ def _build_videos_router() -> APIRouter:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_settings().ensure_dirs()
+    settings = get_settings()
+    # Fail loudly on a service key that cannot bypass RLS (e.g. the anon key
+    # pasted into SUPABASE_SERVICE_ROLE_KEY) instead of silently degrading to
+    # "Unknown category" / empty reads at runtime.
+    issue = service_role_key_issue(settings.supabase_service_role_key)
+    if issue:
+        raise RuntimeError(
+            f"SUPABASE_SERVICE_ROLE_KEY {issue}. Set it to the project's Secret "
+            "key (sb_secret_… or the legacy service_role JWT) from Supabase → "
+            "Project Settings → API Keys."
+        )
+    settings.ensure_dirs()
     yield
 
 

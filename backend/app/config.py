@@ -6,11 +6,51 @@ caller can escape the storage root (defense in depth against path traversal).
 """
 from __future__ import annotations
 
+import base64
+import json
 import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+
+
+def _jwt_role(token: str) -> Optional[str]:
+    """Best-effort read of the ``role`` claim from a JWT, WITHOUT verifying it.
+
+    Used only for a startup sanity check on the service key — never for auth.
+    Returns ``None`` if ``token`` is not a decodable JWT.
+    """
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload))
+    except Exception:
+        return None
+    role = data.get("role")
+    return role if isinstance(role, str) else None
+
+
+def service_role_key_issue(key: str) -> Optional[str]:
+    """Return a human-readable reason if ``key`` is *provably* not a service key.
+
+    Guards against the classic misconfiguration where the project's **anon /
+    publishable** key is pasted into ``SUPABASE_SERVICE_ROLE_KEY``. Such a key
+    cannot bypass RLS, so every service-role query silently returns zero rows —
+    e.g. :func:`supa.category_belongs_to_user` is always False, surfacing as a
+    ``400 "Unknown category"`` on ingest. Only flags keys we can prove are
+    wrong; empty / opaque values pass (dev tolerates an unset key).
+    """
+    if not key:
+        return None
+    if key.startswith("sb_publishable_"):
+        return "looks like a PUBLISHABLE (anon) key — it cannot bypass RLS"
+    role = _jwt_role(key)
+    if role and role != "service_role":
+        return f"is a JWT with role={role!r} (expected 'service_role') — it cannot bypass RLS"
+    return None
 
 
 @dataclass(frozen=True)
