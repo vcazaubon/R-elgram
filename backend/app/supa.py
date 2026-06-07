@@ -61,6 +61,11 @@ def get_video(video_id: str, user_id: Optional[str] = None) -> Optional[dict]:
     return res.data[0] if res.data else None
 
 
+def delete_video(video_id: str, user_id: str) -> None:
+    """Delete a ``videos`` row constrained to ``user_id`` (defense in depth)."""
+    get_client().table("videos").delete().eq("id", video_id).eq("user_id", user_id).execute()
+
+
 # --- categories -------------------------------------------------------------
 
 def category_belongs_to_user(category_id: str, user_id: str) -> bool:

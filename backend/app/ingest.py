@@ -22,6 +22,27 @@ TITLE_MAX = 80
 FALLBACK_COLOR = "#a78bfa"
 
 
+# --- in-flight task registry ------------------------------------------------
+# Maps a ``video_id`` to its running ingest ``asyncio.Task`` so Spec 06's
+# DELETE can cancel a job still in flight (avoids an orphan file being rewritten
+# after the row + files are purged). Entries are removed when the task finishes.
+_ingest_tasks: dict[str, "asyncio.Task"] = {}
+
+
+def _register_ingest(video_id: str, task: "asyncio.Task") -> None:
+    """Record an in-flight ingest task and auto-remove it when it completes."""
+    _ingest_tasks[video_id] = task
+    task.add_done_callback(lambda _t, vid=video_id: _ingest_tasks.pop(vid, None))
+
+
+def cancel_ingest(video_id: str) -> None:
+    """Cancel the in-flight ingest task for ``video_id`` and drop it from the
+    registry. No-op if no task is registered (already finished or never ran)."""
+    task = _ingest_tasks.pop(video_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+
 # --- external binaries (mocked in tests) ------------------------------------
 
 def _download(url: str, dest: Path, cookies: Optional[str], max_mb: int) -> dict:
@@ -154,6 +175,11 @@ async def run_ingest(video_id: str, user_id: str, url: str) -> None:
                 "thumb_color": color,
             },
         )
+    except asyncio.CancelledError:
+        # Cancelled by DELETE (Spec 06): stop here without rewriting any file or
+        # status — the row + files are being purged by the caller. Re-raise so
+        # the task is properly marked cancelled.
+        raise
     except Exception as exc:  # noqa: BLE001 — any failure -> error status, no crash
         message = str(exc) or exc.__class__.__name__
         try:

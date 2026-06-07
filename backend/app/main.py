@@ -3,9 +3,10 @@
 Two auth paths (cf. ``auth.py``): JWT or personal token for ingest/status; JWT
 only for media-url and tokens; signed media token (``?t=``) for stream/thumb.
 
-``DELETE /api/videos/{id}`` is intentionally out of scope (Spec 06); the videos
-routes are isolated in :func:`_build_videos_router` so it can be grafted there.
-No CORS by default (same-origin via nginx); ``CORS_ORIGINS`` is the off switch.
+``DELETE /api/videos/{id}`` (Spec 06) purges the row + file + thumbnail and
+cancels an in-flight ingest; it lives in :func:`_build_videos_router` with the
+other videos routes. No CORS by default (same-origin via nginx); ``CORS_ORIGINS``
+is the off switch.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import os
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 
 from . import auth, ingest, media, supa
 from .config import get_settings
@@ -36,6 +37,8 @@ def _schedule_ingest(video_id: str, user_id: str, url: str) -> None:
     task = asyncio.create_task(ingest.run_ingest(video_id, user_id, url))
     _ingest_tasks.add(task)
     task.add_done_callback(_ingest_tasks.discard)
+    # Register the task by video_id so DELETE (Spec 06) can cancel it in flight.
+    ingest._register_ingest(video_id, task)
 
 
 # --- URL validation ---------------------------------------------------------
@@ -114,10 +117,7 @@ def _build_ingest_router() -> APIRouter:
 
 
 def _build_videos_router() -> APIRouter:
-    """Routes under ``/videos/{id}``.
-
-    Isolated so Spec 06 can graft ``DELETE /videos/{id}`` here.
-    """
+    """Routes under ``/videos/{id}`` (media-url, stream, thumb, delete)."""
     router = APIRouter(prefix="/videos", tags=["videos"])
 
     @router.get("/{video_id}/media-url", response_model=MediaUrls)
@@ -163,6 +163,31 @@ def _build_videos_router() -> APIRouter:
         if not path.exists():
             raise HTTPException(status_code=404, detail="File missing")
         return media.stream_file(path, request.headers.get("Range"), media_type="image/jpeg")
+
+    @router.delete("/{video_id}", status_code=204)
+    async def delete_video(
+        video_id: str,
+        user_id: str = Depends(auth.resolve_user),
+    ):
+        row = supa.get_video(video_id, user_id=user_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        # Cancel an in-flight ingest before purging so a job still in flight
+        # cannot rewrite the files after we delete them.
+        if row.get("status") != "ready":
+            ingest.cancel_ingest(video_id)
+        # Best-effort file purge (idempotent if already gone). abs_path confines
+        # the relative paths to DATA_DIR (defense in depth against traversal).
+        settings = get_settings()
+        for rel in (row.get("storage_path"), row.get("thumb_path")):
+            if not rel:
+                continue
+            try:
+                settings.abs_path(rel).unlink()
+            except (FileNotFoundError, ValueError):
+                pass
+        supa.delete_video(video_id, user_id)
+        return Response(status_code=204)
 
     return router
 
