@@ -1,8 +1,13 @@
 """Authentication: Supabase JWT verification + personal-token resolution.
 
 Two auth paths (Design maître §5):
-- ``Authorization: Bearer <supabase_jwt>`` — verified HS256 against
-  ``SUPABASE_JWT_SECRET`` with audience ``authenticated``.
+- ``Authorization: Bearer <supabase_jwt>`` — verified with audience
+  ``authenticated``. Supabase signs access tokens either with **asymmetric
+  signing keys** (ES256/RS256 — the modern default: verified against the project
+  JWKS at ``{SUPABASE_URL}/auth/v1/.well-known/jwks.json``) or with a **legacy
+  symmetric secret** (HS256 — verified against ``SUPABASE_JWT_SECRET``). Both are
+  supported; the algorithm is read from the token header and matched to a strict
+  whitelist (no ``alg=none`` / algorithm-confusion possible).
 - ``X-Reelgram-Token: <token>`` — sha256 looked up in ``api_tokens`` (service
   role). ``last_used_at`` is refreshed best-effort.
 
@@ -15,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import jwt
+from jwt import PyJWKClient, PyJWKClientError
 from fastapi import HTTPException, Request
 
 from . import supa
@@ -23,27 +29,61 @@ from .config import get_settings
 JWT_AUDIENCE = "authenticated"
 PERSONAL_TOKEN_HEADER = "X-Reelgram-Token"
 
+# Strict algorithm whitelist (prevents alg=none and HS/RS confusion attacks).
+_SYMMETRIC_ALGS = {"HS256", "HS384", "HS512"}
+_ASYMMETRIC_ALGS = {
+    "ES256", "ES384", "ES512",
+    "RS256", "RS384", "RS512",
+    "PS256", "PS384", "PS512",
+    "EdDSA",
+}
+
+_jwk_client: Optional[PyJWKClient] = None
+
 
 def _unauthorized(detail: str = "Unauthorized") -> HTTPException:
     return HTTPException(status_code=401, detail=detail)
 
 
-def verify_jwt(token: str) -> str:
-    """Decode a Supabase JWT (HS256) and return its ``sub`` (user_id).
+def _get_jwk_client() -> PyJWKClient:
+    """Lazily build (and cache) the JWKS client for the project's signing keys."""
+    global _jwk_client
+    if _jwk_client is None:
+        base = get_settings().supabase_url.rstrip("/")
+        _jwk_client = PyJWKClient(f"{base}/auth/v1/.well-known/jwks.json")
+    return _jwk_client
 
-    Raises ``HTTPException(401)`` on any failure: bad signature, wrong
-    audience, missing/expired ``exp``, or missing ``sub``.
+
+def verify_jwt(token: str) -> str:
+    """Verify a Supabase JWT (asymmetric via JWKS or legacy HS256) → ``sub``.
+
+    Raises ``HTTPException(401)`` on any failure: unsupported algorithm, bad
+    signature, wrong audience, missing/expired ``exp``, or missing ``sub``.
     """
-    secret = get_settings().supabase_jwt_secret
     try:
-        payload = jwt.decode(
-            token,
-            secret,
-            algorithms=["HS256"],
-            audience=JWT_AUDIENCE,
-            options={"require": ["exp", "sub"]},
-        )
+        alg = jwt.get_unverified_header(token).get("alg", "")
     except jwt.InvalidTokenError as exc:
+        raise _unauthorized("Invalid token") from exc
+
+    common = {
+        "algorithms": [alg],
+        "audience": JWT_AUDIENCE,
+        "options": {"require": ["exp", "sub"]},
+    }
+    try:
+        if alg in _SYMMETRIC_ALGS:
+            secret = get_settings().supabase_jwt_secret
+            if not secret:
+                raise _unauthorized("JWT secret not configured")
+            payload = jwt.decode(token, secret, **common)
+        elif alg in _ASYMMETRIC_ALGS:
+            signing_key = _get_jwk_client().get_signing_key_from_jwt(token).key
+            payload = jwt.decode(token, signing_key, **common)
+        else:
+            raise _unauthorized("Unsupported token algorithm")
+    except HTTPException:
+        raise
+    except (jwt.InvalidTokenError, PyJWKClientError) as exc:
         raise _unauthorized("Invalid token") from exc
 
     sub = payload.get("sub")

@@ -59,6 +59,60 @@ def test_verify_jwt_missing_exp(monkeypatch):
     assert exc.value.status_code == 401
 
 
+def test_verify_jwt_rejects_alg_none(monkeypatch):
+    _set_secret(monkeypatch)
+    tok = jwt.encode({"sub": "x", "aud": "authenticated"}, "", algorithm="none")
+    with pytest.raises(HTTPException) as exc:
+        auth.verify_jwt(tok)
+    assert exc.value.status_code == 401
+
+
+def test_verify_jwt_es256_via_jwks(monkeypatch):
+    """Modern Supabase: access tokens signed ES256, verified against the JWKS."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    priv = ec.generate_private_key(ec.SECP256R1())
+    token = jwt.encode(
+        {"sub": "es-user", "aud": "authenticated", "exp": int(time.time()) + 60},
+        priv,
+        algorithm="ES256",
+    )
+
+    class _FakeSigningKey:
+        key = priv.public_key()
+
+    class _FakeJWKClient:
+        def get_signing_key_from_jwt(self, _token):
+            return _FakeSigningKey()
+
+    monkeypatch.setattr(auth, "_get_jwk_client", lambda: _FakeJWKClient())
+    assert auth.verify_jwt(token) == "es-user"
+
+
+def test_verify_jwt_es256_wrong_key_rejected(monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    priv = ec.generate_private_key(ec.SECP256R1())
+    other_pub = ec.generate_private_key(ec.SECP256R1()).public_key()
+    token = jwt.encode(
+        {"sub": "es-user", "aud": "authenticated", "exp": int(time.time()) + 60},
+        priv,
+        algorithm="ES256",
+    )
+
+    class _FakeSigningKey:
+        key = other_pub
+
+    class _FakeJWKClient:
+        def get_signing_key_from_jwt(self, _token):
+            return _FakeSigningKey()
+
+    monkeypatch.setattr(auth, "_get_jwk_client", lambda: _FakeJWKClient())
+    with pytest.raises(HTTPException) as exc:
+        auth.verify_jwt(token)
+    assert exc.value.status_code == 401
+
+
 # --- hash_token --------------------------------------------------------------
 
 def test_hash_token_stable():
