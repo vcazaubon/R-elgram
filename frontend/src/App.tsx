@@ -138,7 +138,7 @@ function BootSplash() {
   return (
     <div className="app-root">
       <div className="view" style={{ background: 'var(--bg-0)', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ width: 26, height: 26, borderRadius: '50%', border: '2.6px solid var(--hairline-strong)', borderTopColor: 'var(--a-pink)', animation: 'spin 0.7s linear infinite' }} />
+        <span style={{ width: 26, height: 26, borderRadius: '50%', border: '2.6px solid var(--hairline-strong)', borderTopColor: 'var(--a-rose)', animation: 'spin 0.7s linear infinite' }} />
       </div>
     </div>
   );
