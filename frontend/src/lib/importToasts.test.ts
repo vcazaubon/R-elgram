@@ -50,4 +50,9 @@ describe('detectCompletions', () => {
     const next = [vid('a', 'fetching')];
     expect(detectCompletions(prev, next)).toEqual([]);
   });
+
+  it('ignores a reel already terminal in prev (idempotent re-delivery)', () => {
+    expect(detectCompletions([vid('a', 'ready')], [vid('a', 'ready')])).toEqual([]);
+    expect(detectCompletions([vid('b', 'error')], [vid('b', 'error')])).toEqual([]);
+  });
 });
