@@ -28,6 +28,8 @@ import { CategoriesScreen } from './screens/CategoriesScreen';
 import { ImportScreen } from './screens/ImportScreen';
 import { PlayerScreen } from './screens/PlayerScreen';
 import { AccountSheet } from './screens/AccountSheet';
+import { Toast } from './components/Toast';
+import { detectCompletions, type Completion } from './lib/importToasts';
 
 type Route = 'library' | 'categories' | 'import' | 'player';
 
@@ -140,6 +142,10 @@ function AppShell({ onSignOut }: AppShellProps) {
   const [navKey, setNavKey] = useState(0);
   // URL pre-filled into the Import screen (deep link / Web Share Target).
   const [importUrl, setImportUrl] = useState<string | undefined>(undefined);
+  // File de toasts de fin d'import (un affiché à la fois) + snapshot précédent
+  // des vidéos pour détecter les transitions.
+  const [toasts, setToasts] = useState<Completion[]>([]);
+  const prevVideosRef = useRef<Video[] | null>(null);
 
   const go = (r: Route) => { setRoute(r); setNavKey((k) => k + 1); };
 
@@ -191,6 +197,27 @@ function AppShell({ onSignOut }: AppShellProps) {
   // Realtime: refetch on any change to the user's videos (new ingests, status
   // transitions, deletes). Falls back silently if realtime is unavailable.
   useEffect(() => db.subscribeVideos(() => { void refresh(); }), [refresh]);
+
+  // Détecte les transitions vers ready/error entre deux instantanés de `videos`
+  // et empile les toasts correspondants. Premier rendu : snapshot silencieux
+  // (aucun toast pour les vidéos déjà terminées au lancement).
+  useEffect(() => {
+    const prev = prevVideosRef.current;
+    prevVideosRef.current = videos;
+    if (prev === null) return;
+    const done = detectCompletions(prev, videos);
+    if (done.length) setToasts((q) => [...q, ...done]);
+  }, [videos]);
+
+  // Poll de secours : tant qu'au moins un import est en cours ET que l'app est
+  // au premier plan, rafraîchit toutes les 2 s en plus du realtime. S'arrête dès
+  // qu'il n'y a plus rien en cours (refresh est idempotent).
+  useEffect(() => {
+    const inflight = videos.some((v) => v.status !== 'ready' && v.status !== 'error');
+    if (!inflight || document.visibilityState !== 'visible') return;
+    const id = setInterval(() => { void refresh(); }, 2000);
+    return () => clearInterval(id);
+  }, [videos, refresh]);
 
   // Refetch whenever the app returns to the foreground. On iOS the realtime
   // socket dies while the PWA is backgrounded, and an import done OUTSIDE the
@@ -315,6 +342,16 @@ function AppShell({ onSignOut }: AppShellProps) {
   // pre-fills when set by the share-target effect above.
   const openImport = () => { setImportUrl(undefined); go('import'); };
 
+  const activeToast = toasts[0] ?? null;
+  const dismissToast = () => setToasts((q) => q.slice(1));
+  const handleToastTap = () => {
+    if (!activeToast) return;
+    const v = videos.find((x) => x.id === activeToast.id);
+    if (!v) return; // supprimé entre-temps
+    if (activeToast.kind === 'success') void openVideo(v);
+    else setPendingDelete(v);
+  };
+
   return (
     <div className="app-root">
       <div key={navKey} style={{ position: 'absolute', inset: 0 }}>
@@ -344,6 +381,16 @@ function AppShell({ onSignOut }: AppShellProps) {
         <AccountSheet
           onClose={() => setAccountOpen(false)}
           onSignOut={() => { setAccountOpen(false); onSignOut(); }}
+        />
+      )}
+
+      {activeToast && (
+        <Toast
+          key={activeToast.id + activeToast.kind}
+          kind={activeToast.kind}
+          title={activeToast.title}
+          onTap={handleToastTap}
+          onDismiss={dismissToast}
         />
       )}
 
