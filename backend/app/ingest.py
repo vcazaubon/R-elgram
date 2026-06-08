@@ -239,6 +239,18 @@ def _extract_published_at(info: dict) -> Optional[str]:
     return None
 
 
+def _extract_caption(info: dict) -> Optional[str]:
+    """Return the raw, complete caption (yt-dlp ``description``), or None.
+
+    Stored verbatim — cleaning is applied only to the derived title, never to the
+    caption we persist.
+    """
+    desc = info.get("description")
+    if isinstance(desc, str) and desc.strip():
+        return desc
+    return None
+
+
 # --- pipeline ---------------------------------------------------------------
 
 async def run_ingest(video_id: str, user_id: str, url: str) -> None:

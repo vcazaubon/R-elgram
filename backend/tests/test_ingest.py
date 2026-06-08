@@ -322,3 +322,13 @@ def test_extract_published_at_from_upload_date():
 def test_extract_published_at_missing():
     assert ingest._extract_published_at({}) is None
     assert ingest._extract_published_at({"upload_date": "pas-une-date"}) is None
+
+
+def test_extract_caption_present_is_raw():
+    info = {"description": "Recette 🍋\n\n#food #pasta"}
+    assert ingest._extract_caption(info) == "Recette 🍋\n\n#food #pasta"
+
+
+def test_extract_caption_blank_or_missing():
+    assert ingest._extract_caption({"description": "   "}) is None
+    assert ingest._extract_caption({}) is None
