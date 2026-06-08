@@ -186,14 +186,20 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
     </div>
   );
 
-  // Not-ready videos are not clickable: render the same card as a static div so
-  // the layout/animation is identical but no navigation occurs.
+  // Not-ready videos are not clickable (no navigation), but they must still be
+  // deletable via long-press — an "error" video can't be opened in the player,
+  // so the library is the ONLY place to remove it.
   if (!ready) {
     return (
       <div
         className="rise"
         aria-disabled="true"
-        style={{ display: 'block', width: '100%', textAlign: 'left', padding: 0, opacity: 0.78, animationDelay: `${0.04 * index}s` }}
+        onPointerDown={startPress}
+        onPointerUp={cancelPress}
+        onPointerLeave={cancelPress}
+        onPointerCancel={cancelPress}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: 0, opacity: 0.78, animationDelay: `${0.04 * index}s`, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
       >
         {body}
       </div>
@@ -216,6 +222,9 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
         padding: 0,
         animationDelay: `${0.04 * index}s`,
         WebkitTouchCallout: 'none',
+        // Both are required: React doesn't auto-prefix, and iOS Safari needs the
+        // -webkit- form to stop the long-press from triggering text selection.
+        WebkitUserSelect: 'none',
         userSelect: 'none',
       }}
     >
