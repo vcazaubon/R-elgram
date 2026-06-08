@@ -46,7 +46,7 @@ export function Toast({ kind, title, onTap, onDismiss }: ToastProps) {
     >
       <button
         className="rise"
-        onClick={() => { onTap(); onDismiss(); }}
+        onClick={() => { onDismiss(); onTap(); }}
         style={{
           pointerEvents: 'auto',
           maxWidth: 420,

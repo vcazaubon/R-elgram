@@ -215,7 +215,9 @@ function AppShell({ onSignOut }: AppShellProps) {
   useEffect(() => {
     const inflight = videos.some((v) => v.status !== 'ready' && v.status !== 'error');
     if (!inflight || document.visibilityState !== 'visible') return;
-    const id = setInterval(() => { void refresh(); }, 2000);
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, 2000);
     return () => clearInterval(id);
   }, [videos, refresh]);
 
@@ -348,8 +350,11 @@ function AppShell({ onSignOut }: AppShellProps) {
     if (!activeToast) return;
     const v = videos.find((x) => x.id === activeToast.id);
     if (!v) return; // supprimé entre-temps
-    if (activeToast.kind === 'success') void openVideo(v);
-    else setPendingDelete(v);
+    // Route on the live status, not the toast's snapshot kind, in case the video
+    // moved on since the toast was queued.
+    if (v.status === 'ready') void openVideo(v);
+    else if (v.status === 'error') setPendingDelete(v);
+    // sinon : encore en cours → toast obsolète, on ne fait rien (déjà fermé).
   };
 
   return (
@@ -386,7 +391,7 @@ function AppShell({ onSignOut }: AppShellProps) {
 
       {activeToast && (
         <Toast
-          key={activeToast.id + activeToast.kind}
+          key={`${activeToast.id}:${activeToast.kind}`}
           kind={activeToast.kind}
           title={activeToast.title}
           onTap={handleToastTap}
