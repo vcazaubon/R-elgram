@@ -251,6 +251,24 @@ def _extract_caption(info: dict) -> Optional[str]:
     return None
 
 
+def _is_synthetic_title(title: str, info: dict) -> bool:
+    """True when ``title`` is yt-dlp's synthetic Instagram title ``Video by …``.
+
+    Instagram reels have no real title; yt-dlp fabricates ``"Video by {uploader}"``.
+    Detecting it lets the title chain skip it instead of reintroducing the very
+    string we are replacing.
+    """
+    t = (title or "").strip()
+    if not t:
+        return False
+    if re.match(r"video by \S", t, re.IGNORECASE):
+        return True
+    uploader = info.get("uploader") or info.get("uploader_id")
+    if uploader and t.lower() == f"video by {str(uploader).strip()}".lower():
+        return True
+    return False
+
+
 # --- pipeline ---------------------------------------------------------------
 
 async def run_ingest(video_id: str, user_id: str, url: str) -> None:

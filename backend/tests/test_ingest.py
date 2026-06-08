@@ -332,3 +332,13 @@ def test_extract_caption_present_is_raw():
 def test_extract_caption_blank_or_missing():
     assert ingest._extract_caption({"description": "   "}) is None
     assert ingest._extract_caption({}) is None
+
+
+def test_is_synthetic_title_matches_video_by():
+    assert ingest._is_synthetic_title("Video by cool.creator", {}) is True
+    assert ingest._is_synthetic_title("video by someone", {}) is True
+
+
+def test_is_synthetic_title_real_title():
+    assert ingest._is_synthetic_title("Ma vraie vidéo", {}) is False
+    assert ingest._is_synthetic_title("", {}) is False
