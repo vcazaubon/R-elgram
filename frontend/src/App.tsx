@@ -13,9 +13,7 @@ import type { TabId } from './components/TabBar';
 import { AuthProvider, useAuth } from './lib/auth';
 import { decideAuthMode } from './lib/authLogic';
 import {
-  isBiometricAvailable,
   isBiometricEnrolled,
-  enrollBiometric,
   unlockBiometric,
   clearBiometric,
 } from './lib/biometric';
@@ -58,31 +56,13 @@ function Gate() {
   const [biometricEnrolled, setBiometricEnrolled] = useState(false);
   // While locked, the app is gated behind biometric unlock even with a session.
   const [unlocked, setUnlocked] = useState(false);
-  // One-shot enrolment offer after a fresh sign-in on a capable device.
-  const [offerEnroll, setOfferEnroll] = useState(false);
-  const [enrollDismissed, setEnrollDismissed] = useState(false);
 
-  // Sync enrolment flag with the current user.
+  // Sync enrolment flag with the current user. Face ID stays opt-in (enabled
+  // from Account → Connexion) — no post-sign-in nudge (removed as friction).
   useEffect(() => {
     setBiometricEnrolled(userKey ? isBiometricEnrolled(userKey) : false);
     setUnlocked(false);
-    setEnrollDismissed(false);
-    setOfferEnroll(false);
   }, [userKey]);
-
-  // After sign-in with no enrolled credential, offer enrolment if the device
-  // supports it. Never blocks: on unsupported browsers this stays false.
-  useEffect(() => {
-    let active = true;
-    if (session && userKey && !biometricEnrolled && !enrollDismissed) {
-      isBiometricAvailable().then((ok) => {
-        if (active && ok) setOfferEnroll(true);
-      });
-    } else {
-      setOfferEnroll(false);
-    }
-    return () => { active = false; };
-  }, [session, userKey, biometricEnrolled, enrollDismissed]);
 
   if (loading) {
     return <BootSplash />;
@@ -99,21 +79,10 @@ function Gate() {
     return ok;
   };
 
-  const handleEnroll = async () => {
-    if (!userKey) { setOfferEnroll(false); return; }
-    const ok = await enrollBiometric(userKey);
-    if (ok) setBiometricEnrolled(true);
-    setOfferEnroll(false);
-    setEnrollDismissed(true);
-  };
-
-  const skipEnroll = () => { setOfferEnroll(false); setEnrollDismissed(true); };
-
   const handleSignOut = async () => {
     if (userKey) clearBiometric(userKey);
     setBiometricEnrolled(false);
     setUnlocked(false);
-    setOfferEnroll(false);
     await signOut();
   };
 
@@ -131,14 +100,7 @@ function Gate() {
     );
   }
 
-  return (
-    <AppShell
-      onSignOut={handleSignOut}
-      offerEnroll={offerEnroll}
-      onEnroll={handleEnroll}
-      onSkipEnroll={skipEnroll}
-    />
-  );
+  return <AppShell onSignOut={handleSignOut} />;
 }
 
 function BootSplash() {
@@ -153,12 +115,9 @@ function BootSplash() {
 
 interface AppShellProps {
   onSignOut: () => void;
-  offerEnroll: boolean;
-  onEnroll: () => void;
-  onSkipEnroll: () => void;
 }
 
-function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellProps) {
+function AppShell({ onSignOut }: AppShellProps) {
   const [videos, setVideos] = useState<Video[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -388,8 +347,6 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
         />
       )}
 
-      {offerEnroll && <EnrollSheet onEnroll={onEnroll} onSkip={onSkipEnroll} />}
-
       {pendingDelete && (
         <ConfirmDeleteSheet
           title={pendingDelete.title}
@@ -427,37 +384,3 @@ function ConfirmDeleteSheet({ title, onConfirm, onCancel }: ConfirmDeleteSheetPr
   );
 }
 
-interface EnrollSheetProps {
-  onEnroll: () => void;
-  onSkip: () => void;
-}
-
-function EnrollSheet({ onEnroll, onSkip }: EnrollSheetProps) {
-  return (
-    <div onClick={onSkip} style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(3px)', animation: 'fadeBg 0.25s ease both' }}>
-      <style>{`@keyframes fadeBg{from{opacity:0}to{opacity:1}}@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}`}</style>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-1)', borderRadius: '26px 26px 0 0', border: '1px solid var(--hairline)', borderBottom: 'none', padding: '10px 22px calc(env(safe-area-inset-bottom,0px) + 26px)', animation: 'sheetUp 0.36s var(--ease) both', boxShadow: '0 -20px 60px -20px rgba(0,0,0,0.8)', textAlign: 'center' }}>
-        <div style={{ width: 40, height: 5, borderRadius: 999, background: 'var(--hairline-strong)', margin: '0 auto 20px' }} />
-        <div style={{ width: 64, height: 64, borderRadius: 20, background: 'var(--grad-accent)', display: 'grid', placeItems: 'center', margin: '0 auto 16px', color: '#120a14', boxShadow: '0 14px 34px -12px rgba(255,126,179,0.5)' }}>
-          <FaceIdGlyphLg />
-        </div>
-        <h3 style={{ fontSize: 19, fontWeight: 700 }}>Verrouiller avec Face ID ?</h3>
-        <p style={{ fontSize: 14, color: 'var(--txt-1)', marginTop: 8, lineHeight: 1.5 }}>
-          Ajoute un verrou biométrique par-dessus ta session. À chaque ouverture, ton vault restera privé.
-        </p>
-        <button className="btn-primary" style={{ marginTop: 22 }} onClick={onEnroll}>Activer Face ID</button>
-        <button className="btn-ghost" style={{ marginTop: 10 }} onClick={onSkip}>Plus tard</button>
-      </div>
-    </div>
-  );
-}
-
-function FaceIdGlyphLg() {
-  return (
-    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
-      <path d="M9 10v1M15 10v1M12 9.5v3.5M10.5 12h-.5" />
-      <path d="M9 15.5c.9.8 1.9 1.1 3 1.1s2.1-.3 3-1.1" />
-    </svg>
-  );
-}
