@@ -11,6 +11,7 @@ import type { Video, Category } from '../lib/types';
 import { Icons } from './Icons';
 import { Thumb } from './Thumb';
 import { categoryFor, formatAuthor, formatDate, formatDuration } from '../lib/format';
+import { progressFor, dashoffsetFor, STEP_LABELS } from '../lib/ingestProgress';
 
 export interface VideoCardProps {
   video: Video;
@@ -148,7 +149,7 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
             >
               {formatDuration(video.duration_seconds)}
             </span>
-          ) : (
+          ) : video.status === 'error' ? (
             <span
               style={{
                 position: 'absolute',
@@ -162,15 +163,57 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
                 borderRadius: 7,
                 fontSize: 12,
                 fontWeight: 600,
-                color: video.status === 'error' ? '#ff8a96' : '#fff',
+                color: '#ff8a96',
                 background: 'rgba(10,10,12,0.5)',
                 backdropFilter: 'blur(8px)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 letterSpacing: '0.06em',
               }}
             >
-              {video.status === 'error' ? 'Erreur' : '…'}
+              Erreur
             </span>
+          ) : (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                background: 'rgba(8,8,10,0.4)',
+                backdropFilter: 'blur(2px)',
+                WebkitBackdropFilter: 'blur(2px)',
+              }}
+            >
+              <svg width="46" height="46" viewBox="0 0 46 46" style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx="23" cy="23" r="19" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="4" />
+                <circle
+                  cx="23"
+                  cy="23"
+                  r="19"
+                  fill="none"
+                  stroke="#fff"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 19}
+                  strokeDashoffset={dashoffsetFor(progressFor(video.status).percent, 19)}
+                  style={{ transition: 'stroke-dashoffset 0.5s var(--ease)' }}
+                />
+              </svg>
+              <span
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  letterSpacing: '0.02em',
+                  color: '#fff',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                }}
+              >
+                {STEP_LABELS[video.status]}
+              </span>
+            </div>
           )}
         </div>
         {/* meta strip */}
@@ -199,7 +242,7 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
         onPointerLeave={cancelPress}
         onPointerCancel={cancelPress}
         onContextMenu={(e) => e.preventDefault()}
-        style={{ display: 'block', width: '100%', textAlign: 'left', padding: 0, opacity: 0.78, animationDelay: `${0.04 * index}s`, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: 0, opacity: video.status === 'error' ? 0.78 : 1, animationDelay: `${0.04 * index}s`, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
       >
         {body}
       </div>

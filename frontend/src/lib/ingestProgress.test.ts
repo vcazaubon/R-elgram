@@ -4,7 +4,7 @@
 // Import medallion. Kept side-effect-free so it runs in the Node vitest env.
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { progressFor } from './ingestProgress';
+import { progressFor, STEP_LABELS, dashoffsetFor } from './ingestProgress';
 
 describe('progressFor', () => {
   it('maps statuses to step/percent', () => {
@@ -51,5 +51,29 @@ describe('progressFor', () => {
     expect(progressFor('analyzing', 1).percent).toBeGreaterThan(
       progressFor('analyzing', 0).percent,
     );
+  });
+});
+
+describe('STEP_LABELS', () => {
+  it('labels the in-progress stages in French', () => {
+    expect(STEP_LABELS.analyzing).toBe('Analyse…');
+    expect(STEP_LABELS.fetching).toBe('Téléchargement…');
+    expect(STEP_LABELS.thumbnailing).toBe('Aperçu…');
+  });
+});
+
+describe('dashoffsetFor', () => {
+  const r = 19;
+  const circ = 2 * Math.PI * r;
+  it('is the full circumference at 0% and 0 at 100%', () => {
+    expect(dashoffsetFor(0, r)).toBeCloseTo(circ);
+    expect(dashoffsetFor(100, r)).toBeCloseTo(0);
+  });
+  it('is half the circumference at 50%', () => {
+    expect(dashoffsetFor(50, r)).toBeCloseTo(circ / 2);
+  });
+  it('clamps out-of-range percentages', () => {
+    expect(dashoffsetFor(-10, r)).toBeCloseTo(circ);
+    expect(dashoffsetFor(150, r)).toBeCloseTo(0);
   });
 });

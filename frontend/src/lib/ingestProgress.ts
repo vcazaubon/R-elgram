@@ -51,3 +51,22 @@ export function progressFor(status: VideoStatus, step?: number): IngestProgress 
     isDone,
   };
 }
+
+// Libellés FR des étapes d'ingestion, affichés sur la carte en cours.
+// 'ready'/'error' présents pour l'exhaustivité du type ; la carte n'affiche le
+// libellé que pour les états en cours.
+export const STEP_LABELS: Record<VideoStatus, string> = {
+  analyzing: 'Analyse…',
+  fetching: 'Téléchargement…',
+  thumbnailing: 'Aperçu…',
+  ready: 'Prêt',
+  error: 'Erreur',
+};
+
+// stroke-dashoffset d'un anneau SVG pour un pourcentage 0..100 donné et un rayon.
+// 0% → circonférence entière (anneau vide), 100% → 0 (anneau plein).
+export function dashoffsetFor(percent: number, radius: number): number {
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, percent));
+  return circumference * (1 - clamped / 100);
+}
