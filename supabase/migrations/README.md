@@ -2,6 +2,13 @@
 
 Schéma initial : `0001_init.sql` (tables `categories`, `videos`, `api_tokens` + RLS + trigger de signup).
 
+Migrations suivantes (à appliquer dans l'ordre, après `0001`) :
+
+- `0002_add_caption_published_at.sql` — ajoute `videos.caption` (légende brute du reel)
+  et `videos.published_at` (date de publication), alimentées à l'ingestion pour des titres
+  parlants. Idempotente (`add column if not exists`), colonnes nullables → aucun impact sur
+  les lignes existantes.
+
 ## Comment appliquer la migration
 
 Deux options, au choix :
@@ -10,8 +17,8 @@ Deux options, au choix :
 
 1. Ouvrir le projet dans le dashboard Supabase.
 2. Aller dans **SQL Editor** > **New query**.
-3. Copier-coller l'intégralité du contenu de `0001_init.sql`.
-4. Cliquer sur **Run**.
+3. Copier-coller l'intégralité du contenu de `0001_init.sql`, puis **Run**.
+4. Répéter pour chaque migration suivante dans l'ordre (`0002_add_caption_published_at.sql`, …).
 
 La migration est idempotente (`create table if not exists`, `drop policy if exists`,
 `create or replace function`, `drop trigger if exists`), donc elle peut être ré-exécutée
