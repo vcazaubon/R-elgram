@@ -310,6 +310,26 @@ def _fallback_title(info: dict) -> Optional[str]:
     return f"{author} · {date}" if date else author
 
 
+def _resolve_title(info: dict) -> str:
+    """Resolve a meaningful title for an ingested reel.
+
+    Chain: (1) first useful caption line → (2) a real, non-synthetic yt-dlp
+    title → (3) ``@author · date`` → (4) DEFAULT_TITLE. Pure and total: always
+    returns a non-empty string.
+    """
+    from_caption = _clean_caption_line(info.get("description") or "")
+    if from_caption:
+        return from_caption
+
+    title = (info.get("title") or "").strip()
+    if title and not _is_synthetic_title(title, info):
+        first_line = title.splitlines()[0].strip()
+        if first_line:
+            return _truncate_words(first_line, TITLE_MAX)
+
+    return _fallback_title(info) or DEFAULT_TITLE
+
+
 # --- pipeline ---------------------------------------------------------------
 
 async def run_ingest(video_id: str, user_id: str, url: str) -> None:

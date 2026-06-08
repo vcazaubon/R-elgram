@@ -377,3 +377,31 @@ def test_fallback_title_author_only_when_no_date():
 
 def test_fallback_title_none_without_author():
     assert ingest._fallback_title({"upload_date": "20260512"}) is None
+
+
+def test_resolve_title_prefers_caption():
+    info = {
+        "title": "Video by cool.creator",
+        "description": "Recette de pâtes au citron 🍋\n#food",
+        "uploader_id": "cool.creator",
+    }
+    assert ingest._resolve_title(info) == "Recette de pâtes au citron 🍋"
+
+
+def test_resolve_title_real_title_when_no_caption():
+    info = {"title": "Ma vraie vidéo", "uploader_id": "bob"}
+    assert ingest._resolve_title(info) == "Ma vraie vidéo"
+
+
+def test_resolve_title_fallback_on_synthetic_without_caption():
+    info = {"title": "Video by bob", "uploader_id": "bob", "upload_date": "20260512"}
+    assert ingest._resolve_title(info) == "@bob · 12 mai 2026"
+
+
+def test_resolve_title_caption_only_hashtags_falls_through():
+    info = {"title": "Video by bob", "description": "#a #b", "uploader_id": "bob"}
+    assert ingest._resolve_title(info) == "@bob"
+
+
+def test_resolve_title_default_when_nothing():
+    assert ingest._resolve_title({}) == ingest.DEFAULT_TITLE
