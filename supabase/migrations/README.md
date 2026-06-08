@@ -8,6 +8,10 @@ Migrations suivantes (à appliquer dans l'ordre, après `0001`) :
   et `videos.published_at` (date de publication), alimentées à l'ingestion pour des titres
   parlants. Idempotente (`add column if not exists`), colonnes nullables → aucun impact sur
   les lignes existantes.
+- `0003_realtime_videos.sql` — ajoute `public.videos` à la publication `supabase_realtime`
+  pour que la bibliothèque se mette à jour en live (sinon les cartes d'ingestion restent
+  figées jusqu'au relaunch). Idempotente. **Corrige le live sans redéploiement du frontend**
+  (la souscription `subscribeVideos` existe déjà côté client).
 
 ## Comment appliquer la migration
 
