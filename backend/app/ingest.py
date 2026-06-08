@@ -217,6 +217,28 @@ def _format_fr_date(iso: Optional[str]) -> Optional[str]:
     return f"{dt.day} {_FR_MONTHS[dt.month - 1]} {dt.year}"
 
 
+def _extract_published_at(info: dict) -> Optional[str]:
+    """Return the reel's publish time as an ISO-8601 UTC string, or None.
+
+    Prefers yt-dlp's ``timestamp`` (Unix epoch); falls back to ``upload_date``
+    (``YYYYMMDD``). Defensive: any bad value yields None rather than raising.
+    """
+    ts = info.get("timestamp")
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        try:
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            pass
+    ud = info.get("upload_date")
+    if ud and re.fullmatch(r"\d{8}", str(ud)):
+        s = str(ud)
+        try:
+            return datetime(int(s[:4]), int(s[4:6]), int(s[6:8]), tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            pass
+    return None
+
+
 # --- pipeline ---------------------------------------------------------------
 
 async def run_ingest(video_id: str, user_id: str, url: str) -> None:

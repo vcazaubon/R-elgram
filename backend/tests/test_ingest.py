@@ -308,3 +308,17 @@ def test_format_fr_date_date_only():
 def test_format_fr_date_none():
     assert ingest._format_fr_date(None) is None
     assert ingest._format_fr_date("pas une date") is None
+
+
+def test_extract_published_at_from_timestamp():
+    # epoch 0 = 1970-01-01T00:00:00+00:00
+    assert ingest._extract_published_at({"timestamp": 0}).startswith("1970-01-01")
+
+
+def test_extract_published_at_from_upload_date():
+    assert ingest._extract_published_at({"upload_date": "20260512"}).startswith("2026-05-12")
+
+
+def test_extract_published_at_missing():
+    assert ingest._extract_published_at({}) is None
+    assert ingest._extract_published_at({"upload_date": "pas-une-date"}) is None
