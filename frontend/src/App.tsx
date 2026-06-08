@@ -18,6 +18,7 @@ import {
   clearBiometric,
 } from './lib/biometric';
 import { setAuthTokenGetter, getMediaUrl } from './lib/api';
+import { createThumbnailLoader, type ThumbnailLoader } from './lib/thumbnails';
 import * as db from './lib/db';
 import type { Category, Video } from './lib/types';
 import { Icons } from './components/Icons';
@@ -125,6 +126,17 @@ function AppShell({ onSignOut }: AppShellProps) {
   const [loading, setLoading] = useState(true);
   // videoId → signed thumbnail URL, resolved on demand for ready videos.
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+  // Lazy thumbnail loader: a card calls onThumbVisible when it nears the
+  // viewport; the loader dedupes + caches and pushes resolved URLs into
+  // thumbUrls. Replaces the old eager Promise.all over every ready video.
+  const thumbLoaderRef = useRef<ThumbnailLoader | null>(null);
+  if (!thumbLoaderRef.current) {
+    thumbLoaderRef.current = createThumbnailLoader({
+      fetch: (id) => getMediaUrl(id).then((m) => m.thumb_url),
+      onResolved: (id, url) => setThumbUrls((prev) => ({ ...prev, [id]: url })),
+    });
+  }
+  const onThumbVisible = useCallback((id: string) => thumbLoaderRef.current!.request(id), []);
 
   // Matches the prototype: screens receive the active tab as a literal
   // ("library" / "categories"), so the tab value is never read here — only
@@ -238,29 +250,6 @@ function AppShell({ onSignOut }: AppShellProps) {
     };
   }, [refresh]);
 
-  // Resolve thumbnail URLs for ready videos we haven't fetched yet.
-  useEffect(() => {
-    let active = true;
-    const pending = videos.filter((v) => v.status === 'ready' && !thumbUrls[v.id]);
-    if (pending.length === 0) return;
-    void Promise.all(
-      pending.map(async (v) => {
-        try {
-          const { thumb_url } = await getMediaUrl(v.id);
-          return [v.id, thumb_url] as const;
-        } catch {
-          return null;
-        }
-      }),
-    ).then((pairs) => {
-      if (!active) return;
-      const next: Record<string, string> = {};
-      for (const p of pairs) if (p) next[p[0]] = p[1];
-      if (Object.keys(next).length) setThumbUrls((prev) => ({ ...prev, ...next }));
-    });
-    return () => { active = false; };
-  }, [videos, thumbUrls]);
-
   // ---- actions -------------------------------------------------------------
 
   const openVideo = async (v: Video) => {
@@ -365,7 +354,7 @@ function AppShell({ onSignOut }: AppShellProps) {
             ? <EmptyScreen tab="library" onTab={onTab} onAdd={openImport} />
             : <LibraryScreen videos={videos} categories={categories} thumbUrls={thumbUrls} loading={loading}
                 tab="library" onTab={onTab} onOpen={openVideo} onRequestDelete={setPendingDelete}
-                onAdd={openImport} onAccount={() => setAccountOpen(true)} />
+                onAdd={openImport} onAccount={() => setAccountOpen(true)} onThumbVisible={onThumbVisible} />
         )}
         {route === 'categories' && (
           <CategoriesScreen videos={videos} categories={categories} tab="categories" onTab={onTab}
