@@ -293,3 +293,154 @@ async def test_run_ingest_download_error(monkeypatch, tmp_path):
     final = rec.final
     assert final["status"] == "error"
     assert final["error"]  # non-empty message
+
+
+# --- titres parlants : helpers de date ---------------------------------------
+
+def test_format_fr_date_iso_datetime():
+    assert ingest._format_fr_date("2026-05-12T08:30:00+00:00") == "12 mai 2026"
+
+
+def test_format_fr_date_date_only():
+    assert ingest._format_fr_date("2026-05-12") == "12 mai 2026"
+
+
+def test_format_fr_date_none():
+    assert ingest._format_fr_date(None) is None
+    assert ingest._format_fr_date("pas une date") is None
+
+
+def test_extract_published_at_from_timestamp():
+    # epoch 0 = 1970-01-01T00:00:00+00:00
+    assert ingest._extract_published_at({"timestamp": 0}).startswith("1970-01-01")
+
+
+def test_extract_published_at_from_upload_date():
+    assert ingest._extract_published_at({"upload_date": "20260512"}).startswith("2026-05-12")
+
+
+def test_extract_published_at_missing():
+    assert ingest._extract_published_at({}) is None
+    assert ingest._extract_published_at({"upload_date": "pas-une-date"}) is None
+
+
+def test_extract_caption_present_is_raw():
+    info = {"description": "Recette 🍋\n\n#food #pasta"}
+    assert ingest._extract_caption(info) == "Recette 🍋\n\n#food #pasta"
+
+
+def test_extract_caption_blank_or_missing():
+    assert ingest._extract_caption({"description": "   "}) is None
+    assert ingest._extract_caption({}) is None
+
+
+def test_is_synthetic_title_matches_video_by():
+    assert ingest._is_synthetic_title("Video by cool.creator", {}) is True
+    assert ingest._is_synthetic_title("video by someone", {}) is True
+
+
+def test_is_synthetic_title_real_title():
+    assert ingest._is_synthetic_title("Ma vraie vidéo", {}) is False
+    assert ingest._is_synthetic_title("", {}) is False
+
+
+def test_clean_caption_line_strips_trailing_hashtags():
+    line = ingest._clean_caption_line("Recette de pâtes au citron 🍋\n\n#food #pasta")
+    assert line == "Recette de pâtes au citron 🍋"
+
+
+def test_clean_caption_line_picks_first_useful_line():
+    assert ingest._clean_caption_line("\n\nVraie ligne ici\nautre") == "Vraie ligne ici"
+
+
+def test_clean_caption_line_hashtags_or_emoji_only():
+    assert ingest._clean_caption_line("#food #pasta #yum") is None
+    assert ingest._clean_caption_line("🍝🍋") is None
+    assert ingest._clean_caption_line("") is None
+
+
+def test_clean_caption_line_truncates_at_word_boundary():
+    res = ingest._clean_caption_line("mot " * 40)  # ~160 chars
+    assert len(res) <= ingest.TITLE_MAX
+    assert res.endswith("…")
+    assert not res.endswith(" …")  # coupé proprement à un mot
+
+
+def test_clean_caption_line_truncates_single_long_word():
+    res = ingest._clean_caption_line("a" * 200)
+    assert len(res) <= ingest.TITLE_MAX
+    assert res.endswith("…")
+
+
+def test_fallback_title_author_and_date():
+    info = {"uploader_id": "bob", "upload_date": "20260512"}
+    assert ingest._fallback_title(info) == "@bob · 12 mai 2026"
+
+
+def test_fallback_title_author_only_when_no_date():
+    assert ingest._fallback_title({"uploader_id": "bob"}) == "@bob"
+
+
+def test_fallback_title_none_without_author():
+    assert ingest._fallback_title({"upload_date": "20260512"}) is None
+
+
+def test_resolve_title_prefers_caption():
+    info = {
+        "title": "Video by cool.creator",
+        "description": "Recette de pâtes au citron 🍋\n#food",
+        "uploader_id": "cool.creator",
+    }
+    assert ingest._resolve_title(info) == "Recette de pâtes au citron 🍋"
+
+
+def test_resolve_title_real_title_when_no_caption():
+    info = {"title": "Ma vraie vidéo", "uploader_id": "bob"}
+    assert ingest._resolve_title(info) == "Ma vraie vidéo"
+
+
+def test_resolve_title_fallback_on_synthetic_without_caption():
+    info = {"title": "Video by bob", "uploader_id": "bob", "upload_date": "20260512"}
+    assert ingest._resolve_title(info) == "@bob · 12 mai 2026"
+
+
+def test_resolve_title_caption_only_hashtags_falls_through():
+    info = {"title": "Video by bob", "description": "#a #b", "uploader_id": "bob"}
+    assert ingest._resolve_title(info) == "@bob"
+
+
+def test_resolve_title_default_when_nothing():
+    assert ingest._resolve_title({}) == ingest.DEFAULT_TITLE
+
+
+async def test_run_ingest_title_from_caption(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    def fake_download(url, dest, cookies, max_mb):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"x")
+        return {
+            "title": "Video by cool.creator",          # synthétique IG
+            "description": "Recette de pâtes au citron 🍋\n\n#food #pasta",
+            "uploader_id": "cool.creator",
+            "duration": 30,
+            "upload_date": "20260512",
+        }
+
+    monkeypatch.setattr(ingest, "_download", fake_download)
+    monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
+
+    await ingest.run_ingest("vid-cap", "user-7", "https://instagram.com/reel/x/")
+
+    assert rec.statuses == ["fetching", "thumbnailing", "ready"]
+    final = rec.final
+    assert final["status"] == "ready"
+    assert final["title"] == "Recette de pâtes au citron 🍋"   # plus de "Video by …"
+    assert final["caption"] == "Recette de pâtes au citron 🍋\n\n#food #pasta"
+    assert final["published_at"].startswith("2026-05-12")
+    assert final["author"] == "@cool.creator"
+    assert final["duration_seconds"] == 30

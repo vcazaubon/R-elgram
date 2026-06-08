@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -161,16 +163,6 @@ def _dominant_color(src: Path) -> str:
 
 # --- metadata extraction ----------------------------------------------------
 
-def _extract_title(info: dict) -> str:
-    raw = (info.get("title") or "").strip()
-    if not raw:
-        return DEFAULT_TITLE
-    first_line = raw.splitlines()[0].strip()
-    if not first_line:
-        return DEFAULT_TITLE
-    return first_line[:TITLE_MAX]
-
-
 def _extract_author(info: dict) -> Optional[str]:
     handle = info.get("uploader_id") or info.get("uploader")
     if not handle:
@@ -189,6 +181,134 @@ def _extract_duration(info: dict) -> Optional[int]:
         return int(dur)
     except (TypeError, ValueError):
         return None
+
+
+_FR_MONTHS = (
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+)
+
+
+def _format_fr_date(iso: Optional[str]) -> Optional[str]:
+    """Format an ISO date/datetime string as a French ``"12 mai 2026"`` label.
+
+    Locale-independent (container locales are unreliable). Returns None on any
+    unparseable input.
+    """
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return None
+    return f"{dt.day} {_FR_MONTHS[dt.month - 1]} {dt.year}"
+
+
+def _extract_published_at(info: dict) -> Optional[str]:
+    """Return the reel's publish time as an ISO-8601 UTC string, or None.
+
+    Prefers yt-dlp's ``timestamp`` (Unix epoch); falls back to ``upload_date``
+    (``YYYYMMDD``). Defensive: any bad value yields None rather than raising.
+    """
+    ts = info.get("timestamp")
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        try:
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            pass
+    ud = info.get("upload_date")
+    if ud and re.fullmatch(r"\d{8}", str(ud)):
+        s = str(ud)
+        try:
+            return datetime(int(s[:4]), int(s[4:6]), int(s[6:8]), tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            pass
+    return None
+
+
+def _extract_caption(info: dict) -> Optional[str]:
+    """Return the raw, complete caption (yt-dlp ``description``), or None.
+
+    Stored verbatim — cleaning is applied only to the derived title, never to the
+    caption we persist.
+    """
+    desc = info.get("description")
+    if isinstance(desc, str) and desc.strip():
+        return desc
+    return None
+
+
+def _is_synthetic_title(title: str, info: dict) -> bool:
+    """True when ``title`` is yt-dlp's synthetic Instagram title ``Video by …``.
+
+    Instagram reels have no real title; yt-dlp fabricates ``"Video by {uploader}"``.
+    Detecting it lets the title chain skip it instead of reintroducing the very
+    string we are replacing. (``info`` is part of the interface for future
+    uploader-aware checks.)
+    """
+    t = (title or "").strip()
+    return bool(re.match(r"video by \S", t, re.IGNORECASE))
+
+
+def _truncate_words(text: str, maxlen: int = TITLE_MAX) -> str:
+    """Truncate to at most ``maxlen`` chars (ellipsis included) at a word boundary."""
+    if len(text) <= maxlen:
+        return text
+    cut = text[: maxlen - 1].rstrip()
+    if " " in cut:
+        cut = cut[: cut.rfind(" ")].rstrip()
+    return cut + "…"
+
+
+def _clean_caption_line(description: str) -> Optional[str]:
+    """Return the first *useful* line of a caption, cleaned, or None.
+
+    Useful = still has an alphanumeric character after dropping hashtags/emojis.
+    Cleaning is light: drop a trailing run of hashtags, collapse whitespace,
+    truncate at a word boundary to TITLE_MAX. The middle of the line is left as-is.
+    """
+    for raw in (description or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        without_trailing_tags = re.sub(r"(\s*#[^\s#]+)+\s*$", "", line).strip()
+        candidate = re.sub(r"\s+", " ", without_trailing_tags).strip()
+        if re.search(r"[^\W_]", candidate):  # has a letter or digit
+            return _truncate_words(candidate, TITLE_MAX)
+    return None
+
+
+def _fallback_title(info: dict) -> Optional[str]:
+    """Build ``@author · date`` (or ``@author`` if no date), else None.
+
+    Reuses ``_extract_author`` for the ``@handle``. Returns None when there is no
+    author, letting the caller fall back to DEFAULT_TITLE.
+    """
+    author = _extract_author(info)
+    if not author:
+        return None
+    date = _format_fr_date(_extract_published_at(info))
+    return f"{author} · {date}" if date else author
+
+
+def _resolve_title(info: dict) -> str:
+    """Resolve a meaningful title for an ingested reel.
+
+    Chain: (1) first useful caption line → (2) a real, non-synthetic yt-dlp
+    title → (3) ``@author · date`` → (4) DEFAULT_TITLE. Pure and total: always
+    returns a non-empty string.
+    """
+    from_caption = _clean_caption_line(info.get("description") or "")
+    if from_caption:
+        return from_caption
+
+    title = (info.get("title") or "").strip()
+    if title and not _is_synthetic_title(title, info):
+        first_line = title.splitlines()[0].strip()
+        if first_line:
+            return _truncate_words(first_line, TITLE_MAX)
+
+    return _fallback_title(info) or DEFAULT_TITLE
 
 
 # --- pipeline ---------------------------------------------------------------
@@ -231,9 +351,11 @@ async def run_ingest(video_id: str, user_id: str, url: str) -> None:
                 "status": "ready",
                 "storage_path": rel_video,
                 "thumb_path": rel_thumb,
-                "title": _extract_title(info),
+                "title": _resolve_title(info),
                 "author": _extract_author(info),
                 "duration_seconds": _extract_duration(info),
+                "caption": _extract_caption(info),
+                "published_at": _extract_published_at(info),
                 "thumb_color": color,
             },
         )
