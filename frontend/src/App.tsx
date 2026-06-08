@@ -233,6 +233,23 @@ function AppShell({ onSignOut, offerEnroll, onEnroll, onSkipEnroll }: AppShellPr
   // transitions, deletes). Falls back silently if realtime is unavailable.
   useEffect(() => db.subscribeVideos(() => { void refresh(); }), [refresh]);
 
+  // Refetch whenever the app returns to the foreground. On iOS the realtime
+  // socket dies while the PWA is backgrounded, and an import done OUTSIDE the
+  // app (the iOS Shortcut shares straight to /api/ingest) never reaches a live
+  // subscription — so without this the library only updates after a full
+  // close/reopen. visibilitychange covers app-switch; focus covers the rest.
+  useEffect(() => {
+    const onForeground = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onForeground);
+    window.addEventListener('focus', onForeground);
+    return () => {
+      document.removeEventListener('visibilitychange', onForeground);
+      window.removeEventListener('focus', onForeground);
+    };
+  }, [refresh]);
+
   // Resolve thumbnail URLs for ready videos we haven't fetched yet.
   useEffect(() => {
     let active = true;
