@@ -411,3 +411,34 @@ def test_resolve_title_caption_only_hashtags_falls_through():
 
 def test_resolve_title_default_when_nothing():
     assert ingest._resolve_title({}) == ingest.DEFAULT_TITLE
+
+
+async def test_run_ingest_title_from_caption(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    def fake_download(url, dest, cookies, max_mb):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"x")
+        return {
+            "title": "Video by cool.creator",          # synthétique IG
+            "description": "Recette de pâtes au citron 🍋\n\n#food #pasta",
+            "uploader_id": "cool.creator",
+            "duration": 30,
+            "upload_date": "20260512",
+        }
+
+    monkeypatch.setattr(ingest, "_download", fake_download)
+    monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
+
+    await ingest.run_ingest("vid-cap", "user-7", "https://instagram.com/reel/x/")
+
+    final = rec.final
+    assert final["status"] == "ready"
+    assert final["title"] == "Recette de pâtes au citron 🍋"   # plus de "Video by …"
+    assert final["caption"] == "Recette de pâtes au citron 🍋\n\n#food #pasta"
+    assert final["published_at"].startswith("2026-05-12")
+    assert final["author"] == "@cool.creator"

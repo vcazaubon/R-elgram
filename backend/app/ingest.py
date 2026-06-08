@@ -163,16 +163,6 @@ def _dominant_color(src: Path) -> str:
 
 # --- metadata extraction ----------------------------------------------------
 
-def _extract_title(info: dict) -> str:
-    raw = (info.get("title") or "").strip()
-    if not raw:
-        return DEFAULT_TITLE
-    first_line = raw.splitlines()[0].strip()
-    if not first_line:
-        return DEFAULT_TITLE
-    return first_line[:TITLE_MAX]
-
-
 def _extract_author(info: dict) -> Optional[str]:
     handle = info.get("uploader_id") or info.get("uploader")
     if not handle:
@@ -361,9 +351,11 @@ async def run_ingest(video_id: str, user_id: str, url: str) -> None:
                 "status": "ready",
                 "storage_path": rel_video,
                 "thumb_path": rel_thumb,
-                "title": _extract_title(info),
+                "title": _resolve_title(info),
                 "author": _extract_author(info),
                 "duration_seconds": _extract_duration(info),
+                "caption": _extract_caption(info),
+                "published_at": _extract_published_at(info),
                 "thumb_color": color,
             },
         )
