@@ -210,10 +210,7 @@ def _format_fr_date(iso: Optional[str]) -> Optional[str]:
     try:
         dt = datetime.fromisoformat(iso)
     except (TypeError, ValueError):
-        try:
-            dt = datetime.fromisoformat(str(iso)[:10])
-        except (TypeError, ValueError):
-            return None
+        return None
     return f"{dt.day} {_FR_MONTHS[dt.month - 1]} {dt.year}"
 
 
@@ -256,17 +253,11 @@ def _is_synthetic_title(title: str, info: dict) -> bool:
 
     Instagram reels have no real title; yt-dlp fabricates ``"Video by {uploader}"``.
     Detecting it lets the title chain skip it instead of reintroducing the very
-    string we are replacing.
+    string we are replacing. (``info`` is part of the interface for future
+    uploader-aware checks.)
     """
     t = (title or "").strip()
-    if not t:
-        return False
-    if re.match(r"video by \S", t, re.IGNORECASE):
-        return True
-    uploader = info.get("uploader") or info.get("uploader_id")
-    if uploader and t.lower() == f"video by {str(uploader).strip()}".lower():
-        return True
-    return False
+    return bool(re.match(r"video by \S", t, re.IGNORECASE))
 
 
 def _truncate_words(text: str, maxlen: int = TITLE_MAX) -> str:

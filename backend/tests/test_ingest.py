@@ -366,6 +366,12 @@ def test_clean_caption_line_truncates_at_word_boundary():
     assert not res.endswith(" …")  # coupé proprement à un mot
 
 
+def test_clean_caption_line_truncates_single_long_word():
+    res = ingest._clean_caption_line("a" * 200)
+    assert len(res) <= ingest.TITLE_MAX
+    assert res.endswith("…")
+
+
 def test_fallback_title_author_and_date():
     info = {"uploader_id": "bob", "upload_date": "20260512"}
     assert ingest._fallback_title(info) == "@bob · 12 mai 2026"
