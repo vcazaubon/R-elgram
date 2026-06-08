@@ -342,3 +342,25 @@ def test_is_synthetic_title_matches_video_by():
 def test_is_synthetic_title_real_title():
     assert ingest._is_synthetic_title("Ma vraie vidéo", {}) is False
     assert ingest._is_synthetic_title("", {}) is False
+
+
+def test_clean_caption_line_strips_trailing_hashtags():
+    line = ingest._clean_caption_line("Recette de pâtes au citron 🍋\n\n#food #pasta")
+    assert line == "Recette de pâtes au citron 🍋"
+
+
+def test_clean_caption_line_picks_first_useful_line():
+    assert ingest._clean_caption_line("\n\nVraie ligne ici\nautre") == "Vraie ligne ici"
+
+
+def test_clean_caption_line_hashtags_or_emoji_only():
+    assert ingest._clean_caption_line("#food #pasta #yum") is None
+    assert ingest._clean_caption_line("🍝🍋") is None
+    assert ingest._clean_caption_line("") is None
+
+
+def test_clean_caption_line_truncates_at_word_boundary():
+    res = ingest._clean_caption_line("mot " * 40)  # ~160 chars
+    assert len(res) <= ingest.TITLE_MAX
+    assert res.endswith("…")
+    assert not res.endswith(" …")  # coupé proprement à un mot

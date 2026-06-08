@@ -269,6 +269,34 @@ def _is_synthetic_title(title: str, info: dict) -> bool:
     return False
 
 
+def _truncate_words(text: str, maxlen: int = TITLE_MAX) -> str:
+    """Truncate to at most ``maxlen`` chars (ellipsis included) at a word boundary."""
+    if len(text) <= maxlen:
+        return text
+    cut = text[: maxlen - 1].rstrip()
+    if " " in cut:
+        cut = cut[: cut.rfind(" ")].rstrip()
+    return cut + "…"
+
+
+def _clean_caption_line(description: str) -> Optional[str]:
+    """Return the first *useful* line of a caption, cleaned, or None.
+
+    Useful = still has an alphanumeric character after dropping hashtags/emojis.
+    Cleaning is light: drop a trailing run of hashtags, collapse whitespace,
+    truncate at a word boundary to TITLE_MAX. The middle of the line is left as-is.
+    """
+    for raw in (description or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        without_trailing_tags = re.sub(r"(\s*#[^\s#]+)+\s*$", "", line).strip()
+        candidate = re.sub(r"\s+", " ", without_trailing_tags).strip()
+        if re.search(r"[^\W_]", candidate):  # has a letter or digit
+            return _truncate_words(candidate, TITLE_MAX)
+    return None
+
+
 # --- pipeline ---------------------------------------------------------------
 
 async def run_ingest(video_id: str, user_id: str, url: str) -> None:
