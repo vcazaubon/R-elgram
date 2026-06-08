@@ -88,9 +88,12 @@ export function PlayerScreen({ video, categories, streamUrl, onBack, onUpdate, o
         </button>
       </div>
 
-      {/* video stage */}
-      <div style={{ position: 'relative', zIndex: 2, flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 20px' }}>
-        <div style={{ position: 'relative', width: '100%', maxWidth: 320, aspectRatio: '9 / 16', borderRadius: 28, overflow: 'hidden', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.9), 0 0 60px -20px ' + glow, border: '1px solid rgba(255,255,255,0.12)', background: `linear-gradient(150deg, ${gradientFromColor(video.thumb_color)[0]}, ${glow})` }}
+      {/* video stage — minHeight:0 lets it shrink (flex items don't shrink below
+          their content by default); the card is sized by HEIGHT so it scales
+          down to fit instead of pushing the controls off-screen (PWA standalone,
+          where the safe-area insets eat extra vertical space). */}
+      <div style={{ position: 'relative', zIndex: 2, flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 20px' }}>
+        <div style={{ position: 'relative', height: '100%', width: 'auto', maxWidth: '100%', aspectRatio: '9 / 16', borderRadius: 28, overflow: 'hidden', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.9), 0 0 60px -20px ' + glow, border: '1px solid rgba(255,255,255,0.12)', background: `linear-gradient(150deg, ${gradientFromColor(video.thumb_color)[0]}, ${glow})` }}
           onClick={togglePlay}>
           {streamUrl ? (
             <video
