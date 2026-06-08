@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -189,6 +191,30 @@ def _extract_duration(info: dict) -> Optional[int]:
         return int(dur)
     except (TypeError, ValueError):
         return None
+
+
+_FR_MONTHS = (
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+)
+
+
+def _format_fr_date(iso: Optional[str]) -> Optional[str]:
+    """Format an ISO date/datetime string as a French ``"12 mai 2026"`` label.
+
+    Locale-independent (container locales are unreliable). Returns None on any
+    unparseable input.
+    """
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        try:
+            dt = datetime.fromisoformat(str(iso)[:10])
+        except (TypeError, ValueError):
+            return None
+    return f"{dt.day} {_FR_MONTHS[dt.month - 1]} {dt.year}"
 
 
 # --- pipeline ---------------------------------------------------------------

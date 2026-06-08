@@ -293,3 +293,18 @@ async def test_run_ingest_download_error(monkeypatch, tmp_path):
     final = rec.final
     assert final["status"] == "error"
     assert final["error"]  # non-empty message
+
+
+# --- titres parlants : helpers de date ---------------------------------------
+
+def test_format_fr_date_iso_datetime():
+    assert ingest._format_fr_date("2026-05-12T08:30:00+00:00") == "12 mai 2026"
+
+
+def test_format_fr_date_date_only():
+    assert ingest._format_fr_date("2026-05-12") == "12 mai 2026"
+
+
+def test_format_fr_date_none():
+    assert ingest._format_fr_date(None) is None
+    assert ingest._format_fr_date("pas une date") is None
