@@ -225,20 +225,37 @@ export function AccountSheet({ onClose, onSignOut }: AccountSheetProps) {
           </div>
         </div>
 
-        {/* Face ID toggle */}
+        {/* Connexion: explicit choice between direct entry and a Face ID lock
+            asked on every open. OFF clears the local credential (direct entry);
+            ON enrolls (Face ID prompt). The Supabase session persists either
+            way — this only controls the per-open LOCAL lock (a WebAuthn passkey
+            gated by Face ID; a web PWA cannot use the native Face ID API). */}
         {bioAvailable && (
-          <button onClick={handleToggleBio} style={{ marginTop: 22, width: '100%', display: 'flex', alignItems: 'center', gap: 13, padding: '14px 16px', borderRadius: 16, background: 'var(--bg-1)', border: '1px solid var(--hairline)' }}>
-            <div style={{ width: 38, height: 38, borderRadius: 11, background: 'var(--grad-accent-soft)', border: '1px solid var(--hairline)', display: 'grid', placeItems: 'center', color: 'var(--a-violet)', flex: '0 0 auto' }}>
-              <Icons.user size={19} />
+          <div style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, fontWeight: 700, color: 'var(--txt-1)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <Icons.user size={17} style={{ color: 'var(--a-violet)' }} /> Connexion
             </div>
-            <div style={{ flex: 1, textAlign: 'left' }}>
-              <div style={{ fontSize: 15, fontWeight: 560, color: 'var(--txt-0)' }}>Activer Face ID</div>
-              <div style={{ fontSize: 12.5, color: 'var(--txt-2)', marginTop: 2 }}>Verrou biométrique par-dessus la session</div>
-            </div>
-            <span style={{ flex: '0 0 auto', width: 46, height: 28, borderRadius: 999, background: bioEnrolled ? 'var(--grad-accent)' : 'var(--bg-3)', border: '1px solid var(--hairline)', position: 'relative', transition: 'background 0.25s var(--ease)' }}>
-              <span style={{ position: 'absolute', top: 2.5, left: bioEnrolled ? 21 : 2.5, width: 22, height: 22, borderRadius: '50%', background: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', transition: 'left 0.25s var(--ease)' }} />
-            </span>
-          </button>
+            <p style={{ marginTop: 8, fontSize: 13.5, color: 'var(--txt-2)', lineHeight: 1.5 }}>
+              Choisis comment l’app s’ouvre : directement, ou en demandant Face ID à chaque fois.
+            </p>
+            <button onClick={handleToggleBio} role="switch" aria-checked={bioEnrolled}
+              style={{ marginTop: 12, width: '100%', display: 'flex', alignItems: 'center', gap: 13, padding: '14px 16px', borderRadius: 16, background: 'var(--bg-1)', border: '1px solid var(--hairline)' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: 'var(--grad-accent-soft)', border: '1px solid var(--hairline)', display: 'grid', placeItems: 'center', color: 'var(--a-violet)', flex: '0 0 auto' }}>
+                <Icons.user size={19} />
+              </div>
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <div style={{ fontSize: 15, fontWeight: 560, color: 'var(--txt-0)' }}>Demander Face ID à chaque ouverture</div>
+                <div style={{ fontSize: 12.5, color: 'var(--txt-2)', marginTop: 2, lineHeight: 1.4 }}>
+                  {bioEnrolled
+                    ? 'Activé : ton vault se déverrouille avec Face ID à chaque ouverture.'
+                    : 'Désactivé : accès direct, tu restes connecté sans Face ID.'}
+                </div>
+              </div>
+              <span style={{ flex: '0 0 auto', width: 46, height: 28, borderRadius: 999, background: bioEnrolled ? 'var(--grad-accent)' : 'var(--bg-3)', border: '1px solid var(--hairline)', position: 'relative', transition: 'background 0.25s var(--ease)' }}>
+                <span style={{ position: 'absolute', top: 2.5, left: bioEnrolled ? 21 : 2.5, width: 22, height: 22, borderRadius: '50%', background: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', transition: 'left 0.25s var(--ease)' }} />
+              </span>
+            </button>
+          </div>
         )}
 
         {/* sign out */}
