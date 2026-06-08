@@ -297,6 +297,19 @@ def _clean_caption_line(description: str) -> Optional[str]:
     return None
 
 
+def _fallback_title(info: dict) -> Optional[str]:
+    """Build ``@author · date`` (or ``@author`` if no date), else None.
+
+    Reuses ``_extract_author`` for the ``@handle``. Returns None when there is no
+    author, letting the caller fall back to DEFAULT_TITLE.
+    """
+    author = _extract_author(info)
+    if not author:
+        return None
+    date = _format_fr_date(_extract_published_at(info))
+    return f"{author} · {date}" if date else author
+
+
 # --- pipeline ---------------------------------------------------------------
 
 async def run_ingest(video_id: str, user_id: str, url: str) -> None:
