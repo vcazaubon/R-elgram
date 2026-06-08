@@ -6,7 +6,8 @@
 // the resolved category. Videos whose `status !== 'ready'` show a "…" badge
 // and are not clickable until the ingest job completes.
 // ============================================================
-import { useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useInView } from '../lib/useInView';
 import type { Video, Category } from '../lib/types';
 import { Icons } from './Icons';
 import { Thumb } from './Thumb';
@@ -25,13 +26,34 @@ export interface VideoCardProps {
    * without entering the player (which is where the only other delete lives).
    */
   onRequestDelete?: (video: Video) => void;
+  /**
+   * Called when a ready card nears the viewport, so the parent can resolve its
+   * thumbnail on demand (lazy). Optional: cards still render (gradient fallback)
+   * if no resolver is wired.
+   */
+  onThumbVisible?: (id: string) => void;
 }
 
 const LONG_PRESS_MS = 500;
 
-export function VideoCard({ video, index, categories, thumbUrl, onOpen, onRequestDelete }: VideoCardProps) {
+export function VideoCard({ video, index, categories, thumbUrl, onOpen, onRequestDelete, onThumbVisible }: VideoCardProps) {
   const cat = categoryFor(video.category_id, categories);
   const ready = video.status === 'ready';
+
+  // Lazy thumbnail: a callback ref (typed Element so it attaches to either the
+  // <button> or the <div> variant) feeds useInView; when a ready card nears the
+  // viewport we ask the parent to resolve its thumbnail. rootMargin pre-loads a
+  // little ahead of scroll. Off-screen cards keep their thumb_color gradient.
+  const cardRef = useRef<Element | null>(null);
+  const setCardRef = useCallback((el: Element | null) => { cardRef.current = el; }, []);
+  const inView = useInView(cardRef, { rootMargin: '200px 0px' });
+  useEffect(() => {
+    if (inView && ready && onThumbVisible) onThumbVisible(video.id);
+  }, [inView, ready, onThumbVisible, video.id]);
+
+  // Cap the entrance-stagger so far-down cards don't inherit absurd delays
+  // (index 500 → 20s). content-visibility means they paint when scrolled in.
+  const enterDelay = `${0.04 * Math.min(index, 12)}s`;
 
   // Long-press → delete. A fired long-press also suppresses the click that iOS
   // synthesises on release, so the player doesn't open at the same time.
@@ -236,13 +258,14 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
     return (
       <div
         className="rise"
+        ref={setCardRef}
         aria-disabled="true"
         onPointerDown={startPress}
         onPointerUp={cancelPress}
         onPointerLeave={cancelPress}
         onPointerCancel={cancelPress}
         onContextMenu={(e) => e.preventDefault()}
-        style={{ display: 'block', width: '100%', textAlign: 'left', padding: 0, opacity: video.status === 'error' ? 0.78 : 1, animationDelay: `${0.04 * index}s`, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: 0, opacity: video.status === 'error' ? 0.78 : 1, animationDelay: enterDelay, contentVisibility: 'auto', containIntrinsicSize: 'auto 320px', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
       >
         {body}
       </div>
@@ -252,6 +275,7 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
   return (
     <button
       className="rise"
+      ref={setCardRef}
       onClick={handleClick}
       onPointerDown={startPress}
       onPointerUp={cancelPress}
@@ -263,7 +287,12 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
         width: '100%',
         textAlign: 'left',
         padding: 0,
-        animationDelay: `${0.04 * index}s`,
+        animationDelay: enterDelay,
+        // Native windowing: the browser skips layout/paint of off-screen cards
+        // (their backdrop-filter blur is the expensive part). `auto` lets it
+        // remember the real size once painted → stable scrollbar.
+        contentVisibility: 'auto',
+        containIntrinsicSize: 'auto 320px',
         WebkitTouchCallout: 'none',
         // Both are required: React doesn't auto-prefix, and iOS Safari needs the
         // -webkit- form to stop the long-press from triggering text selection.
