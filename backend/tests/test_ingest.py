@@ -436,9 +436,11 @@ async def test_run_ingest_title_from_caption(monkeypatch, tmp_path):
 
     await ingest.run_ingest("vid-cap", "user-7", "https://instagram.com/reel/x/")
 
+    assert rec.statuses == ["fetching", "thumbnailing", "ready"]
     final = rec.final
     assert final["status"] == "ready"
     assert final["title"] == "Recette de pâtes au citron 🍋"   # plus de "Video by …"
     assert final["caption"] == "Recette de pâtes au citron 🍋\n\n#food #pasta"
     assert final["published_at"].startswith("2026-05-12")
     assert final["author"] == "@cool.creator"
+    assert final["duration_seconds"] == 30
