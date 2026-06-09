@@ -58,12 +58,14 @@ Dark mode profond presque noir, accents en dégradé **rose → orange → viole
 | Couche | Techno |
 |--------|--------|
 | **App** | PWA Vite + React + TypeScript, installable, Face ID (WebAuthn) |
-| **API** | FastAPI + **yt-dlp** + ffmpeg — récupération vidéo, miniatures, streaming HTTP range derrière URLs signées |
+| **API** | FastAPI + **yt-dlp** + **gallery-dl** + ffmpeg — récupération vidéo & posts image, miniatures, streaming HTTP range derrière URLs signées |
 | **Données** | Supabase Cloud — Auth email/mot de passe + Postgres, isolation **multi-compte par RLS** |
 | **Vidéos** | Stockées sur un **volume local** (pas dans le cloud) |
 | **Déploiement** | Docker Compose, **Coolify-ready** depuis GitHub — `web` (nginx + PWA, reverse-proxy `/api`) + `api` interne + volume persistant |
 
 Même origine (pas de CORS), config injectée au runtime (une seule image pour tous les environnements), `api` jamais exposé publiquement.
+
+> **Posts image & carrousels** — les photos et carrousels Instagram (`/p/`) sont extraits via **gallery-dl**, qui réutilise le **même fichier de cookies** (`IG_COOKIES_FILE`) que yt-dlp. Aucune configuration supplémentaire n'est nécessaire ; voir [`docs/DEPLOY.md`](docs/DEPLOY.md#cookies-instagram-optionnel) pour la mise en place des cookies.
 
 ## 🚀 Mise en ligne en quelques minutes
 
