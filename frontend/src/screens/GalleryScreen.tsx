@@ -63,7 +63,7 @@ export function GalleryScreen({ video, categories, slides, onBack, onUpdate, onD
 
       {/* stage : piste swipe horizontale (scroll-snap) */}
       <div style={{ position: 'relative', zIndex: 2, flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0' }}>
-        {slides ? (
+        {slides && slides.length > 0 ? (
           <div
             ref={trackRef}
             onScroll={onScroll}
