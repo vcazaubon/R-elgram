@@ -144,6 +144,49 @@ def _extract_post(url: str, cookies: Optional[str]) -> dict:
     return {"slides": slides, "meta": meta}
 
 
+def _download_image(url: str, dest: Path) -> None:
+    """Télécharge une image (slide de carrousel) vers ``dest`` via httpx.
+
+    Les URLs d'images du CDN Instagram sont publiques (signées en query) →
+    pas besoin de cookies ici. Helper isolé pour être mocké en test.
+    """
+    import httpx
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with httpx.Client(follow_redirects=True, timeout=30) as client:
+        resp = client.get(url)
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
+
+
+def _post_meta_to_info(meta: dict) -> dict:
+    """Adapte les métadonnées gallery-dl au format ``info`` (yt-dlp) attendu par
+    les extracteurs de titre/auteur/légende existants (DRY)."""
+    return {
+        "description": meta.get("description") or "",
+        "uploader_id": meta.get("username"),
+        "uploader": meta.get("fullname"),
+        "title": "",
+    }
+
+
+def _published_at_from_gallery(meta: dict) -> Optional[str]:
+    """Convertit la date gallery-dl (``"YYYY-MM-DD HH:MM:SS"``) en ISO-8601 UTC.
+
+    Naïf → traité comme UTC. Toute valeur illisible → None.
+    """
+    raw = meta.get("date")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace(" ", "T"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 def _video_codec(path: Path) -> Optional[str]:
     """Return the first video stream's codec name (``h264``/``vp9``/…) or None."""
     try:
@@ -188,18 +231,18 @@ def _ensure_ios_compatible(path: Path) -> None:
     tmp.replace(path)
 
 
-def _thumbnail(src: Path, dst: Path) -> None:
-    """Extract a frame (~1s) from ``src`` to ``dst`` (640px wide jpeg) via ffmpeg."""
+def _thumbnail(src: Path, dst: Path, seek: bool = True) -> None:
+    """Extrait une frame de ``src`` vers ``dst`` (jpeg 640px) via ffmpeg.
+
+    ``seek=True`` (défaut, vidéo) saute ~1 s avant la capture ; ``seek=False``
+    (image fixe) capture l'unique frame sans seek (sinon ffmpeg échoue).
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "ffmpeg", "-y", "-ss", "1", "-i", str(src),
-            "-frames:v", "1", "-vf", "scale=640:-1", str(dst),
-        ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    cmd = ["ffmpeg", "-y"]
+    if seek:
+        cmd += ["-ss", "1"]
+    cmd += ["-i", str(src), "-frames:v", "1", "-vf", "scale=640:-1", str(dst)]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def _dominant_color(src: Path) -> str:

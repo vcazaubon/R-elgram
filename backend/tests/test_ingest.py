@@ -496,3 +496,80 @@ def test_looks_like_image_post_url():
     assert ingest._looks_like_image_post_url("https://www.instagram.com/reel/abc/") is False
     assert ingest._looks_like_image_post_url("https://instagram.com/reels/abc/") is False
     assert ingest._looks_like_image_post_url("https://instagram.com/tv/abc/") is False
+
+
+# --- branche image : download httpx + métadonnées + vignette image -----------
+
+def _fake_httpx(capture):
+    """Module httpx de remplacement : capture l'URL et renvoie des octets."""
+    mod = types.ModuleType("httpx")
+
+    class FakeResp:
+        def __init__(self, content):
+            self.content = content
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url):
+            capture["url"] = url
+            return FakeResp(b"IMGBYTES")
+
+    mod.Client = FakeClient
+    return mod
+
+
+def test_download_image_writes_file(monkeypatch, tmp_path):
+    cap = {}
+    monkeypatch.setitem(sys.modules, "httpx", _fake_httpx(cap))
+    dest = tmp_path / "videos/u/v/0.jpg"
+
+    ingest._download_image("https://cdn/0.jpg", dest)
+
+    assert dest.read_bytes() == b"IMGBYTES"
+    assert cap["url"] == "https://cdn/0.jpg"
+
+
+def test_thumbnail_image_has_no_seek(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        Path(cmd[-1]).write_bytes(b"\xff\xd8jpeg")
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(ingest.subprocess, "run", fake_run)
+    src = tmp_path / "0.jpg"
+    src.write_bytes(b"img")
+
+    ingest._thumbnail(src, tmp_path / "t.jpg", seek=False)
+    assert "-ss" not in captured["cmd"]
+
+    ingest._thumbnail(src, tmp_path / "t2.jpg")  # défaut vidéo : seek
+    assert "-ss" in captured["cmd"]
+
+
+def test_post_meta_to_info_maps_keys():
+    meta = {"username": "studio.archi", "fullname": "Studio",
+            "description": "Légende ici"}
+    info = ingest._post_meta_to_info(meta)
+    assert info["uploader_id"] == "studio.archi"
+    assert info["uploader"] == "Studio"
+    assert info["description"] == "Légende ici"
+    assert info["title"] == ""
+
+
+def test_published_at_from_gallery():
+    assert ingest._published_at_from_gallery({"date": "2026-05-12 08:30:00"}).startswith("2026-05-12")
+    assert ingest._published_at_from_gallery({}) is None
+    assert ingest._published_at_from_gallery({"date": "pas-une-date"}) is None
