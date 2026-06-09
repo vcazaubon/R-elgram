@@ -14,6 +14,8 @@ function vid(id: string, status: Video['status'], title = 'Réel'): Video {
     status,
     error: null,
     created_at: '2026-06-08T00:00:00Z',
+    media_type: 'video' as const,
+    media: null,
   };
 }
 

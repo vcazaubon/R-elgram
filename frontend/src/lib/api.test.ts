@@ -87,7 +87,7 @@ describe('getMediaUrl', () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ stream_url: '/s?t=1', thumb_url: '/t?t=1' }),
+      json: async () => ({ media_type: 'video', stream_url: '/s?t=1', thumb_url: '/t?t=1' }),
     });
     const r = await api.getMediaUrl('v1');
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(

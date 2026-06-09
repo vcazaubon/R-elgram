@@ -273,7 +273,7 @@ function AppShell({ onSignOut }: AppShellProps) {
     const reqId = ++openVideoReq.current;
     try {
       const { stream_url } = await getMediaUrl(v.id);
-      if (openVideoReq.current === reqId) setStreamUrl(stream_url);
+      if (openVideoReq.current === reqId) setStreamUrl(stream_url ?? null);
     } catch {
       if (openVideoReq.current === reqId) setStreamUrl(null);
     }
