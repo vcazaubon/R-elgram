@@ -100,3 +100,26 @@ def test_slide_bad_token_403(monkeypatch, tmp_path):
                         lambda vid, user_id=None: dict(_image_row()) if user_id in (None, "user-1") else None)
     r = _client().get("/api/videos/vid-img/slide/0?t=not.a.valid.token")
     assert r.status_code == 403
+
+
+def test_slide_webp_content_type(monkeypatch, tmp_path):
+    """A .webp slide is served with Content-Type: image/webp."""
+    _env(monkeypatch, tmp_path)
+    from app import supa, media
+    from app.config import get_settings
+    webp_row = {
+        "id": "vid-webp", "user_id": "user-1", "status": "ready",
+        "media_type": "image",
+        "media": [{"i": 0, "path": "videos/user-1/vid-webp/0.webp"}],
+        "storage_path": "videos/user-1/vid-webp/0.webp",
+        "thumb_path": "thumbs/user-1/vid-webp.jpg",
+    }
+    p = get_settings().abs_path("videos/user-1/vid-webp/0.webp")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"WEBPDATA")
+    monkeypatch.setattr(supa, "get_video",
+                        lambda vid, user_id=None: dict(webp_row) if user_id in (None, "user-1") else None)
+    tok = media.sign_media_token("vid-webp", "user-1")
+    r = _client().get(f"/api/videos/vid-webp/slide/0?t={tok}")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/webp")

@@ -184,15 +184,26 @@ def _build_videos_router() -> APIRouter:
         if not row:
             raise HTTPException(status_code=404, detail="Not found")
         media_list = row.get("media") or []
-        if i < 0 or i >= len(media_list):
+        # Look up by stored `i`, not by positional index (Fix 3).
+        slide_entry = next((m for m in media_list if m.get("i") == i), None)
+        if slide_entry is None:
             raise HTTPException(status_code=404, detail="Slide not found")
-        rel = media_list[i].get("path")
+        rel = slide_entry.get("path")
         if not rel:
             raise HTTPException(status_code=404, detail="Slide not found")
         path = get_settings().abs_path(rel)
         if not path.exists():
             raise HTTPException(status_code=404, detail="File missing")
-        ctype = "image/webp" if rel.lower().endswith(".webp") else "image/jpeg"
+        # Serve correct MIME type per extension (Fix 2).
+        _MIME = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".webp": "image/webp",
+            ".heic": "image/heic",
+        }
+        ext = rel.lower().rsplit(".", 1)[-1] if "." in rel else ""
+        ctype = _MIME.get(f".{ext}", "image/jpeg")
         return media.stream_file(path, request.headers.get("Range"), media_type=ctype)
 
     @router.delete("/{video_id}", status_code=204)
@@ -212,18 +223,26 @@ def _build_videos_router() -> APIRouter:
         settings = get_settings()
         rels = [row.get("storage_path"), row.get("thumb_path")]
         rels += [m.get("path") for m in (row.get("media") or [])]
-        for rel in rels:
-            if not rel:
-                continue
+        # De-duplicate (Fix 4): for image posts storage_path == media[0]["path"],
+        # avoid unlinking twice. Preserve order via dict.fromkeys.
+        for rel in dict.fromkeys(r for r in rels if r):
             try:
                 settings.abs_path(rel).unlink()
             except (FileNotFoundError, ValueError):
                 pass
-        # Retire le dossier de slides s'il est vide (post image).
-        for rel in (row.get("storage_path"),):
-            if rel and "/" in rel:
+        # Retire le dossier de slides s'il est vide — image posts only (Fix 1).
+        # For video posts storage_path is the shared videos/<user>/ dir parent,
+        # which must NOT be rmdir'd. Only image posts have a dedicated per-post
+        # directory (videos/<user>/<vid>/).
+        if row.get("media_type") == "image":
+            media_items = row.get("media") or []
+            slide_rel = (
+                media_items[0].get("path") if media_items
+                else row.get("storage_path")
+            )
+            if slide_rel and "/" in slide_rel:
                 try:
-                    settings.abs_path(rel).parent.rmdir()
+                    settings.abs_path(slide_rel).parent.rmdir()
                 except (FileNotFoundError, OSError, ValueError):
                     pass
         supa.delete_video(video_id, user_id)
