@@ -38,6 +38,12 @@ export const Icons = {
     </Ico>
   ),
   plus: (p: IconProps) => <Ico d="M12 5v14M5 12h14" {...p} />,
+  carousel: (p: IconProps) => (
+    <Ico {...p}>
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M4 16V6a2 2 0 0 1 2-2h10" />
+    </Ico>
+  ),
   link: (p: IconProps) => (
     <Ico {...p}>
       <path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1.5 1.5" />
