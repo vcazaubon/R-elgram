@@ -129,9 +129,17 @@ def _build_videos_router() -> APIRouter:
         if not row:
             raise HTTPException(status_code=404, detail="Not found")
         token = media.sign_media_token(video_id, user_id, ttl=MEDIA_TTL)
+        thumb_url = f"/api/videos/{video_id}/thumb?t={token}"
+        if row.get("media_type") == "image":
+            slides = [
+                f"/api/videos/{video_id}/slide/{m['i']}?t={token}"
+                for m in (row.get("media") or [])
+            ]
+            return MediaUrls(media_type="image", slides=slides, thumb_url=thumb_url)
         return MediaUrls(
+            media_type="video",
             stream_url=f"/api/videos/{video_id}/stream?t={token}",
-            thumb_url=f"/api/videos/{video_id}/thumb?t={token}",
+            thumb_url=thumb_url,
         )
 
     @router.get("/{video_id}/stream")
@@ -164,6 +172,29 @@ def _build_videos_router() -> APIRouter:
             raise HTTPException(status_code=404, detail="File missing")
         return media.stream_file(path, request.headers.get("Range"), media_type="image/jpeg")
 
+    @router.get("/{video_id}/slide/{i}")
+    async def slide(
+        video_id: str,
+        i: int,
+        request: Request,
+        t: str = Query(...),
+    ):
+        owner_id = _video_id_from_media_token(video_id, t)
+        row = supa.get_video(video_id, user_id=owner_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        media_list = row.get("media") or []
+        if i < 0 or i >= len(media_list):
+            raise HTTPException(status_code=404, detail="Slide not found")
+        rel = media_list[i].get("path")
+        if not rel:
+            raise HTTPException(status_code=404, detail="Slide not found")
+        path = get_settings().abs_path(rel)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="File missing")
+        ctype = "image/webp" if rel.lower().endswith(".webp") else "image/jpeg"
+        return media.stream_file(path, request.headers.get("Range"), media_type=ctype)
+
     @router.delete("/{video_id}", status_code=204)
     async def delete_video(
         video_id: str,
@@ -179,13 +210,22 @@ def _build_videos_router() -> APIRouter:
         # Best-effort file purge (idempotent if already gone). abs_path confines
         # the relative paths to DATA_DIR (defense in depth against traversal).
         settings = get_settings()
-        for rel in (row.get("storage_path"), row.get("thumb_path")):
+        rels = [row.get("storage_path"), row.get("thumb_path")]
+        rels += [m.get("path") for m in (row.get("media") or [])]
+        for rel in rels:
             if not rel:
                 continue
             try:
                 settings.abs_path(rel).unlink()
             except (FileNotFoundError, ValueError):
                 pass
+        # Retire le dossier de slides s'il est vide (post image).
+        for rel in (row.get("storage_path"),):
+            if rel and "/" in rel:
+                try:
+                    settings.abs_path(rel).parent.rmdir()
+                except (FileNotFoundError, OSError, ValueError):
+                    pass
         supa.delete_video(video_id, user_id)
         return Response(status_code=204)
 

@@ -199,3 +199,27 @@ def test_cancel_ingest_noop_when_absent():
     from app import ingest
     # must not raise for an unknown video id
     ingest.cancel_ingest("does-not-exist")
+
+
+def test_delete_purges_image_slides(client, env, monkeypatch):
+    from app.config import get_settings
+    s = get_settings()
+    rels = ["videos/owner-1/vid-c/0.jpg", "videos/owner-1/vid-c/1.jpg"]
+    thumb = "thumbs/owner-1/vid-c.jpg"
+    for rel in rels + [thumb]:
+        p = s.abs_path(rel)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x")
+    row = {
+        "id": "vid-c", "user_id": "owner-1", "status": "ready",
+        "media_type": "image",
+        "media": [{"i": 0, "path": rels[0]}, {"i": 1, "path": rels[1]}],
+        "storage_path": rels[0], "thumb_path": thumb,
+    }
+    _patch_supa(monkeypatch, row=row, deleted={})
+
+    r = client.delete("/api/videos/vid-c", headers=_auth())
+
+    assert r.status_code == 204
+    for rel in rels + [thumb]:
+        assert not s.abs_path(rel).exists()

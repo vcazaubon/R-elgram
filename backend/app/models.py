@@ -57,5 +57,7 @@ class TokenInfo(BaseModel):
 
 
 class MediaUrls(BaseModel):
-    stream_url: str
+    media_type: str = "video"
+    stream_url: Optional[str] = None   # vidéo uniquement
+    slides: Optional[list[str]] = None  # post image : URLs signées par slide
     thumb_url: str
