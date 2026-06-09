@@ -25,12 +25,21 @@ function unwrap<T>(data: T | null, error: { message: string } | null): T {
 
 // ---- videos -----------------------------------------------------------------
 
-/** All videos for the current account, newest first. */
+/**
+ * Upper bound on the in-memory library. The whole table is held client-side
+ * (search/filter are local), so we cap reads at an explicit ceiling instead of
+ * relying on Supabase's silent 1000-row default. Beyond this, switch to
+ * server-side pagination (out of scope for the current ≤1000 target).
+ */
+const MAX_LIBRARY = 1000;
+
+/** All videos for the current account, newest first (capped at MAX_LIBRARY). */
 export async function listVideos(): Promise<Video[]> {
   const { data, error } = await supabase
     .from('videos')
     .select('*')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(MAX_LIBRARY);
   return unwrap(data, error) ?? [];
 }
 

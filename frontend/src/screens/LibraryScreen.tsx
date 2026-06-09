@@ -27,9 +27,11 @@ export interface LibraryScreenProps {
   onTab: (tab: TabId) => void;
   tab: TabId;
   onAccount: () => void;
+  /** Forwarded to each card: resolve a thumbnail when the card nears view. */
+  onThumbVisible?: (id: string) => void;
 }
 
-export function LibraryScreen({ videos, categories, thumbUrls, loading, onOpen, onRequestDelete, onAdd, onTab, tab, onAccount }: LibraryScreenProps) {
+export function LibraryScreen({ videos, categories, thumbUrls, loading, onOpen, onRequestDelete, onAdd, onTab, tab, onAccount, onThumbVisible }: LibraryScreenProps) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
   const [focused, setFocused] = useState(false);
@@ -107,7 +109,7 @@ export function LibraryScreen({ videos, categories, thumbUrls, loading, onOpen, 
               <p style={{ marginTop: 14, fontSize: 14.5 }}>Aucun résultat</p>
             </div>
           ) : filtered.map((v, i) => (
-            <VideoCard key={v.id} video={v} index={i} categories={categories} thumbUrl={thumbUrls[v.id]} onOpen={onOpen} onRequestDelete={onRequestDelete} />
+            <VideoCard key={v.id} video={v} index={i} categories={categories} thumbUrl={thumbUrls[v.id]} onOpen={onOpen} onRequestDelete={onRequestDelete} onThumbVisible={onThumbVisible} />
           ))}
         </div>
       </div>
