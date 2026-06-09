@@ -126,6 +126,15 @@ export function getMediaUrl(id: string): Promise<MediaUrls> {
 }
 
 /**
+ * Résout les URLs signées des slides d'un post image (ordre = index). Renvoie
+ * un tableau vide si le post n'est pas une image (sécurité d'appel).
+ */
+export async function getSlides(id: string): Promise<string[]> {
+  const m = await getMediaUrl(id);
+  return m.slides ?? [];
+}
+
+/**
  * Full purge of a video: row + video file + thumbnail. The backend endpoint
  * lands in Spec 06; the call site is in place from now (db.deleteVideo delegates
  * here so no direct Supabase delete is ever issued).
