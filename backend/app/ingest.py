@@ -418,59 +418,110 @@ def _resolve_title(info: dict) -> str:
 # --- pipeline ---------------------------------------------------------------
 
 async def run_ingest(video_id: str, user_id: str, url: str) -> None:
-    """Run the full ingestion pipeline for an already-created ``videos`` row.
+    """Pipeline complet pour une ligne ``videos`` déjà créée.
 
-    Never raises: failures are recorded as ``status='error'`` on the row.
-    External I/O (yt-dlp, ffmpeg) runs in a worker thread to avoid blocking
-    the event loop.
+    Ne lève jamais : tout échec est enregistré en ``status='error'``. Classe le
+    post puis bifurque : branche **image** (gallery-dl + httpx) si l'URL peut
+    porter des images ET qu'au moins une slide image en sort ; sinon branche
+    **vidéo** (yt-dlp, inchangée), qui sert aussi de repli.
     """
     settings = get_settings()
-    rel_video = settings.rel_video_path(user_id, video_id)
-    rel_thumb = settings.rel_thumb_path(user_id, video_id)
-    video_path = settings.abs_path(rel_video)
-    thumb_path = settings.abs_path(rel_thumb)
-
     try:
         supa.update_video(video_id, {"status": "fetching"})
-        info = await asyncio.to_thread(
-            _download, url, video_path, settings.ig_cookies_file, settings.max_video_mb
-        )
 
-        # yt-dlp peut abandonner (ex. max_filesize dépassé) sans toujours lever :
-        # on vérifie qu'un fichier non-vide a bien été produit pour une erreur claire.
-        if not video_path.exists() or video_path.stat().st_size == 0:
-            raise RuntimeError("aucun fichier téléchargé (taille max dépassée ou vidéo indisponible)")
+        if _looks_like_image_post_url(url):
+            try:
+                post = await asyncio.to_thread(_extract_post, url, settings.ig_cookies_file)
+                images = [s for s in post["slides"] if s["kind"] == "image"]
+            except Exception:  # noqa: BLE001 — extraction KO → repli vidéo
+                images = []
+                post = {"meta": {}}
+            if images:
+                await _finish_image_post(video_id, user_id, images, post["meta"], settings)
+                return
 
-        # Normalise to an iOS-decodable file (H.264 + faststart) before marking
-        # ready, so a VP9/AV1 download never reaches the iPhone as a black player.
-        await asyncio.to_thread(_ensure_ios_compatible, video_path)
-
-        supa.update_video(video_id, {"status": "thumbnailing"})
-        await asyncio.to_thread(_thumbnail, video_path, thumb_path)
-        color = await asyncio.to_thread(_dominant_color, video_path)
-
-        supa.update_video(
-            video_id,
-            {
-                "status": "ready",
-                "storage_path": rel_video,
-                "thumb_path": rel_thumb,
-                "title": _resolve_title(info),
-                "author": _extract_author(info),
-                "duration_seconds": _extract_duration(info),
-                "caption": _extract_caption(info),
-                "published_at": _extract_published_at(info),
-                "thumb_color": color,
-            },
-        )
+        await _finish_video_post(video_id, user_id, url, settings)
     except asyncio.CancelledError:
-        # Cancelled by DELETE (Spec 06): stop here without rewriting any file or
-        # status — the row + files are being purged by the caller. Re-raise so
-        # the task is properly marked cancelled.
+        # Annulé par DELETE (Spec 06) : on s'arrête sans réécrire fichier ni statut.
         raise
-    except Exception as exc:  # noqa: BLE001 — any failure -> error status, no crash
+    except Exception as exc:  # noqa: BLE001 — tout échec -> status error, pas de crash
         message = str(exc) or exc.__class__.__name__
         try:
             supa.update_video(video_id, {"status": "error", "error": message[:500]})
         except Exception:
             pass
+
+
+async def _finish_video_post(video_id: str, user_id: str, url: str, settings) -> None:
+    """Branche vidéo : yt-dlp -> normalisation iOS -> vignette -> ready (inchangée)."""
+    rel_video = settings.rel_video_path(user_id, video_id)
+    rel_thumb = settings.rel_thumb_path(user_id, video_id)
+    video_path = settings.abs_path(rel_video)
+    thumb_path = settings.abs_path(rel_thumb)
+
+    info = await asyncio.to_thread(
+        _download, url, video_path, settings.ig_cookies_file, settings.max_video_mb
+    )
+    if not video_path.exists() or video_path.stat().st_size == 0:
+        raise RuntimeError("aucun fichier téléchargé (taille max dépassée ou vidéo indisponible)")
+
+    await asyncio.to_thread(_ensure_ios_compatible, video_path)
+
+    supa.update_video(video_id, {"status": "thumbnailing"})
+    await asyncio.to_thread(_thumbnail, video_path, thumb_path)
+    color = await asyncio.to_thread(_dominant_color, video_path)
+
+    supa.update_video(
+        video_id,
+        {
+            "status": "ready",
+            "storage_path": rel_video,
+            "thumb_path": rel_thumb,
+            "title": _resolve_title(info),
+            "author": _extract_author(info),
+            "duration_seconds": _extract_duration(info),
+            "caption": _extract_caption(info),
+            "published_at": _extract_published_at(info),
+            "thumb_color": color,
+        },
+    )
+
+
+async def _finish_image_post(video_id: str, user_id: str, images: list, post_meta: dict, settings) -> None:
+    """Branche image : télécharge les slides, vignette/couleur sur la slide 0,
+    puis enregistre ``media_type='image'`` + le tableau ``media``."""
+    media: list[dict] = []
+    for i, img in enumerate(images):
+        ext = (img.get("ext") or "jpg").lower()
+        rel = settings.rel_slide_path(user_id, video_id, i, ext)
+        dest = settings.abs_path(rel)
+        await asyncio.to_thread(_download_image, img["url"], dest)
+        if not dest.exists() or dest.stat().st_size == 0:
+            raise RuntimeError("slide image vide ou indisponible")
+        media.append({"i": i, "path": rel, "w": img.get("width"), "h": img.get("height")})
+
+    cover = settings.abs_path(media[0]["path"])
+    rel_thumb = settings.rel_thumb_path(user_id, video_id)
+    thumb_path = settings.abs_path(rel_thumb)
+
+    supa.update_video(video_id, {"status": "thumbnailing"})
+    await asyncio.to_thread(_thumbnail, cover, thumb_path, False)
+    color = await asyncio.to_thread(_dominant_color, cover)
+
+    info = _post_meta_to_info(post_meta)
+    supa.update_video(
+        video_id,
+        {
+            "status": "ready",
+            "media_type": "image",
+            "media": media,
+            "storage_path": media[0]["path"],
+            "thumb_path": rel_thumb,
+            "title": _resolve_title(info),
+            "author": _extract_author(info),
+            "duration_seconds": None,
+            "caption": _extract_caption(info),
+            "published_at": _published_at_from_gallery(post_meta),
+            "thumb_color": color,
+        },
+    )

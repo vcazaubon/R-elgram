@@ -107,7 +107,7 @@ async def test_run_ingest_title_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
     monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
 
-    await ingest.run_ingest("vid-2", "user-7", "https://instagram.com/p/xyz/")
+    await ingest.run_ingest("vid-2", "user-7", "https://instagram.com/reel/xyz/")
 
     final = rec.final
     assert final["status"] == "ready"
@@ -131,7 +131,7 @@ async def test_run_ingest_title_truncated(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
     monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
 
-    await ingest.run_ingest("vid-3", "user-7", "https://instagram.com/p/xyz/")
+    await ingest.run_ingest("vid-3", "user-7", "https://instagram.com/reel/xyz/")
 
     assert len(rec.final["title"]) <= 80
 
@@ -573,3 +573,106 @@ def test_published_at_from_gallery():
     assert ingest._published_at_from_gallery({"date": "2026-05-12 08:30:00"}).startswith("2026-05-12")
     assert ingest._published_at_from_gallery({}) is None
     assert ingest._published_at_from_gallery({"date": "pas-une-date"}) is None
+
+
+async def test_run_ingest_image_carousel(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    def fake_extract(url, cookies):
+        return {
+            "slides": [
+                {"url": "https://cdn/0.jpg", "ext": "jpg", "kind": "image", "width": 1080, "height": 1350},
+                {"url": "https://cdn/1.jpg", "ext": "jpg", "kind": "image", "width": 1080, "height": 1080},
+                {"url": "https://cdn/2.mp4", "ext": "mp4", "kind": "video", "width": 720, "height": 1280},
+            ],
+            "meta": {"username": "studio.archi", "fullname": "Studio",
+                     "description": "5 idées déco salon\n\n#deco #home",
+                     "date": "2026-05-12 08:30:00"},
+        }
+
+    def fake_dl_image(url, dest):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"IMG:" + url.encode())
+
+    def fake_thumbnail(src, dst, seek=True):
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"\xff\xd8jpeg")
+
+    monkeypatch.setattr(ingest, "_extract_post", fake_extract)
+    monkeypatch.setattr(ingest, "_download_image", fake_dl_image)
+    monkeypatch.setattr(ingest, "_thumbnail", fake_thumbnail)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#abcdef")
+
+    await ingest.run_ingest("vid-img", "user-7", "https://www.instagram.com/p/abc/")
+
+    assert rec.statuses == ["fetching", "thumbnailing", "ready"]
+    final = rec.final
+    assert final["status"] == "ready"
+    assert final["media_type"] == "image"
+    assert len(final["media"]) == 2  # la slide vidéo est ignorée
+    assert final["media"][0] == {"i": 0, "path": "videos/user-7/vid-img/0.jpg", "w": 1080, "h": 1350}
+    assert final["media"][1] == {"i": 1, "path": "videos/user-7/vid-img/1.jpg", "w": 1080, "h": 1080}
+    assert final["storage_path"] == "videos/user-7/vid-img/0.jpg"
+    assert final["thumb_path"] == "thumbs/user-7/vid-img.jpg"
+    assert final["title"] == "5 idées déco salon"
+    assert final["author"] == "@studio.archi"
+    assert final["duration_seconds"] is None
+    assert final["published_at"].startswith("2026-05-12")
+    assert final["thumb_color"] == "#abcdef"
+    assert (tmp_path / "videos/user-7/vid-img/0.jpg").exists()
+    assert (tmp_path / "videos/user-7/vid-img/1.jpg").exists()
+    assert not (tmp_path / "videos/user-7/vid-img/2.mp4").exists()
+
+
+async def test_run_ingest_p_url_pure_video_falls_back(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    monkeypatch.setattr(ingest, "_extract_post",
+                        lambda url, cookies: {"slides": [{"url": "x", "ext": "mp4", "kind": "video"}], "meta": {}})
+
+    def fake_download(url, dest, cookies, max_mb):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"v")
+        return {"title": "t", "duration": 5}
+
+    monkeypatch.setattr(ingest, "_download", fake_download)
+    monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
+
+    await ingest.run_ingest("vid-pv", "user-7", "https://instagram.com/p/onlyvideo/")
+
+    final = rec.final
+    assert final["status"] == "ready"
+    assert final.get("media_type") in (None, "video")  # pas de branche image
+    assert final["storage_path"] == "videos/user-7/vid-pv.mp4"
+
+
+async def test_run_ingest_gallerydl_failure_falls_back(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    def boom(url, cookies):
+        raise RuntimeError("gallery-dl absent")
+
+    def fake_download(url, dest, cookies, max_mb):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"v")
+        return {"title": "t", "duration": 5}
+
+    monkeypatch.setattr(ingest, "_extract_post", boom)
+    monkeypatch.setattr(ingest, "_download", fake_download)
+    monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
+
+    await ingest.run_ingest("vid-fb", "user-7", "https://instagram.com/p/x/")
+
+    final = rec.final
+    assert final["status"] == "ready"
+    assert final["storage_path"] == "videos/user-7/vid-fb.mp4"
