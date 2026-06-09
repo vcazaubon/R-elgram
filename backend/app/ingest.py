@@ -16,6 +16,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from . import supa
 from .config import get_settings
@@ -81,6 +82,66 @@ def _download(url: str, dest: Path, cookies: Optional[str], max_mb: int) -> dict
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
     return info or {}
+
+
+# Extensions considérées comme des images (le reste = vidéo, on les ignore).
+_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "heic"}
+
+
+def _looks_like_image_post_url(url: str) -> bool:
+    """True si l'URL PEUT porter des images (post ``/p/``).
+
+    Les Reels / IGTV sont toujours des vidéos → on saute gallery-dl pour eux.
+    Tout le reste (``/p/`` ou forme inconnue) est tenté en extraction image,
+    avec repli vidéo si aucune image n'en sort (cf. ``run_ingest``).
+    """
+    try:
+        path = (urlparse(url).path or "").lower()
+    except Exception:
+        return False
+    return not ("/reel/" in path or "/reels/" in path or "/tv/" in path)
+
+
+def _extract_post(url: str, cookies: Optional[str]) -> dict:
+    """Classe un post Instagram via ``gallery-dl -j`` (extraction SANS download).
+
+    Renvoie ``{"slides": [{"url","ext","kind","width","height"}, …], "meta": {…}}``.
+    ``gallery-dl -j`` sérialise une liste de messages ; chaque message
+    ``[3, url, metadata]`` (``Message.Url``) décrit un média. ``kind`` vaut
+    ``"image"`` quand l'extension est dans :data:`_IMAGE_EXTS`, sinon ``"video"``.
+    Helper isolé (subprocess) pour être mocké en test, comme yt-dlp/ffmpeg.
+    """
+    import json
+
+    cmd = ["gallery-dl", "-j"]
+    if cookies and Path(cookies).exists():
+        cmd += ["--cookies", cookies]
+    cmd.append(url)
+    out = subprocess.run(
+        cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    ).stdout
+    data = json.loads(out.decode("utf-8", "ignore") or "[]")
+
+    slides: list[dict] = []
+    meta: dict = {}
+    for item in data:
+        if not (isinstance(item, list) and len(item) >= 3 and item[0] == 3):
+            continue
+        media_url, kw = item[1], item[2]
+        if not isinstance(kw, dict):
+            kw = {}
+        if not meta:
+            meta = kw
+        ext = str(kw.get("extension", "")).lower()
+        kind = "image" if ext in _IMAGE_EXTS else "video"
+        slides.append({
+            "url": media_url,
+            "ext": ext or "jpg",
+            "kind": kind,
+            "width": kw.get("width"),
+            "height": kw.get("height"),
+        })
+    return {"slides": slides, "meta": meta}
 
 
 def _video_codec(path: Path) -> Optional[str]:

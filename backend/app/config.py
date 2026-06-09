@@ -79,6 +79,9 @@ class Settings:
     def rel_thumb_path(self, user_id: str, video_id: str) -> str:
         return f"thumbs/{user_id}/{video_id}.jpg"
 
+    def rel_slide_path(self, user_id: str, video_id: str, i: int, ext: str = "jpg") -> str:
+        return f"videos/{user_id}/{video_id}/{i}.{ext}"
+
     # --- absolute path builders --------------------------------------------
     def video_path(self, user_id: str, video_id: str) -> Path:
         return self.abs_path(self.rel_video_path(user_id, video_id))

@@ -444,3 +444,55 @@ async def test_run_ingest_title_from_caption(monkeypatch, tmp_path):
     assert final["published_at"].startswith("2026-05-12")
     assert final["author"] == "@cool.creator"
     assert final["duration_seconds"] == 30
+
+
+# --- gallery-dl : extraction + classification d'un post /p/ ------------------
+
+def test_extract_post_parses_sidecar(monkeypatch):
+    import json as _json
+    payload = [
+        [2, {"username": "studio.archi"}],  # Message.Directory (ignoré)
+        [3, "https://cdn/0.jpg", {"extension": "jpg", "width": 1080, "height": 1350,
+                                  "username": "studio.archi", "fullname": "Studio",
+                                  "description": "5 idées déco salon\n#deco",
+                                  "date": "2026-05-12 08:30:00"}],
+        [3, "https://cdn/1.jpg", {"extension": "jpg", "width": 1080, "height": 1080}],
+        [3, "https://cdn/2.mp4", {"extension": "mp4", "width": 720, "height": 1280}],
+    ]
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[0] == "gallery-dl"
+        assert "-j" in cmd
+        return types.SimpleNamespace(stdout=_json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(ingest.subprocess, "run", fake_run)
+    post = ingest._extract_post("https://instagram.com/p/abc/", None)
+
+    assert [s["kind"] for s in post["slides"]] == ["image", "image", "video"]
+    assert post["slides"][0]["url"] == "https://cdn/0.jpg"
+    assert post["slides"][0]["ext"] == "jpg"
+    assert post["slides"][0]["width"] == 1080
+    assert post["meta"]["username"] == "studio.archi"
+
+
+def test_extract_post_passes_existing_cookiefile(monkeypatch, tmp_path):
+    cookie = tmp_path / "cookies.txt"
+    cookie.write_text("# Netscape HTTP Cookie File\n")
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return types.SimpleNamespace(stdout=b"[]")
+
+    monkeypatch.setattr(ingest.subprocess, "run", fake_run)
+    ingest._extract_post("https://instagram.com/p/abc/", str(cookie))
+
+    assert "--cookies" in seen["cmd"]
+    assert str(cookie) in seen["cmd"]
+
+
+def test_looks_like_image_post_url():
+    assert ingest._looks_like_image_post_url("https://instagram.com/p/abc/") is True
+    assert ingest._looks_like_image_post_url("https://www.instagram.com/reel/abc/") is False
+    assert ingest._looks_like_image_post_url("https://instagram.com/reels/abc/") is False
+    assert ingest._looks_like_image_post_url("https://instagram.com/tv/abc/") is False
