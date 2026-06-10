@@ -199,3 +199,59 @@ def test_cancel_ingest_noop_when_absent():
     from app import ingest
     # must not raise for an unknown video id
     ingest.cancel_ingest("does-not-exist")
+
+
+def test_delete_purges_image_slides(client, env, monkeypatch):
+    from app.config import get_settings
+    s = get_settings()
+    rels = ["videos/owner-1/vid-c/0.jpg", "videos/owner-1/vid-c/1.jpg"]
+    thumb = "thumbs/owner-1/vid-c.jpg"
+    for rel in rels + [thumb]:
+        p = s.abs_path(rel)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x")
+    row = {
+        "id": "vid-c", "user_id": "owner-1", "status": "ready",
+        "media_type": "image",
+        "media": [{"i": 0, "path": rels[0]}, {"i": 1, "path": rels[1]}],
+        "storage_path": rels[0], "thumb_path": thumb,
+    }
+    _patch_supa(monkeypatch, row=row, deleted={})
+
+    r = client.delete("/api/videos/vid-c", headers=_auth())
+
+    assert r.status_code == 204
+    for rel in rels + [thumb]:
+        assert not s.abs_path(rel).exists()
+    # The per-post slide directory must also be removed.
+    assert not s.abs_path("videos/owner-1/vid-c").exists()
+
+
+def test_delete_video_does_not_remove_shared_user_dir(client, env, monkeypatch):
+    """Deleting a VIDEO post must not rmdir the shared videos/<user>/ directory."""
+    from app.config import get_settings
+    s = get_settings()
+    # Create the video being deleted and a sibling file owned by the same user.
+    vid_rel = "videos/owner-1/vid-v.mp4"
+    other_rel = "videos/owner-1/other.mp4"
+    thumb_rel = "thumbs/owner-1/vid-v.jpg"
+    for rel in [vid_rel, other_rel, thumb_rel]:
+        p = s.abs_path(rel)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x")
+    row = {
+        "id": "vid-v", "user_id": "owner-1", "status": "ready",
+        "media_type": "video",
+        "media": None,
+        "storage_path": vid_rel, "thumb_path": thumb_rel,
+    }
+    _patch_supa(monkeypatch, row=row, deleted={})
+
+    r = client.delete("/api/videos/vid-v", headers=_auth())
+
+    assert r.status_code == 204
+    # The deleted video's file is gone, but the shared directory stays because
+    # another video (other.mp4) still lives there.
+    assert not s.abs_path(vid_rel).exists()
+    assert s.abs_path("videos/owner-1").exists(), \
+        "shared videos/owner-1/ directory must NOT be removed for a video post"

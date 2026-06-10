@@ -39,6 +39,8 @@ const LONG_PRESS_MS = 500;
 export function VideoCard({ video, index, categories, thumbUrl, onOpen, onRequestDelete, onThumbVisible }: VideoCardProps) {
   const cat = categoryFor(video.category_id, categories);
   const ready = video.status === 'ready';
+  const isImage = video.media_type === 'image';
+  const slideCount = video.media?.length ?? 0;
 
   // Lazy thumbnail: a callback ref (typed Element so it attaches to either the
   // <button> or the <div> variant) feeds useInView; when a ready card nears the
@@ -108,7 +110,7 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
         }}
       >
         <div style={{ position: 'relative', aspectRatio: '16 / 11' }}>
-          <Thumb video={{ thumb_color: video.thumb_color, thumbUrl }} radius="0" showPlay={ready} />
+          <Thumb video={{ thumb_color: video.thumb_color, thumbUrl }} radius="0" showPlay={ready && !isImage} />
           {/* top row: category + source */}
           <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <span
@@ -159,6 +161,7 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
                 padding: '0 9px',
                 display: 'inline-flex',
                 alignItems: 'center',
+                gap: 5,
                 borderRadius: 7,
                 fontSize: 12,
                 fontWeight: 600,
@@ -169,7 +172,14 @@ export function VideoCard({ video, index, categories, thumbUrl, onOpen, onReques
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
-              {formatDuration(video.duration_seconds)}
+              {isImage ? (
+                <>
+                  <Icons.carousel size={13} />
+                  {slideCount || 1}
+                </>
+              ) : (
+                formatDuration(video.duration_seconds)
+              )}
             </span>
           ) : video.status === 'error' ? (
             <span

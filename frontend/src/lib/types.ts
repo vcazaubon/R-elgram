@@ -28,6 +28,17 @@ export interface Video {
   status: VideoStatus;
   error: string | null;
   created_at: string;
+  media_type: MediaType;
+  media: MediaSlide[] | null;
+}
+
+export type MediaType = 'video' | 'image';
+
+/** Une slide d'un post image (le `path` jsonb est ignoré côté front). */
+export interface MediaSlide {
+  i: number;
+  w: number | null;
+  h: number | null;
 }
 
 export interface IngestStatus {
@@ -44,7 +55,9 @@ export interface ApiToken {
 }
 
 export interface MediaUrls {
-  stream_url: string;
+  media_type: MediaType;
+  stream_url?: string;   // vidéo
+  slides?: string[];     // post image : une URL signée par slide
   thumb_url: string;
 }
 

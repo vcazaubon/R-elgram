@@ -107,7 +107,7 @@ async def test_run_ingest_title_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
     monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
 
-    await ingest.run_ingest("vid-2", "user-7", "https://instagram.com/p/xyz/")
+    await ingest.run_ingest("vid-2", "user-7", "https://instagram.com/reel/xyz/")
 
     final = rec.final
     assert final["status"] == "ready"
@@ -131,7 +131,7 @@ async def test_run_ingest_title_truncated(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
     monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
 
-    await ingest.run_ingest("vid-3", "user-7", "https://instagram.com/p/xyz/")
+    await ingest.run_ingest("vid-3", "user-7", "https://instagram.com/reel/xyz/")
 
     assert len(rec.final["title"]) <= 80
 
@@ -444,3 +444,235 @@ async def test_run_ingest_title_from_caption(monkeypatch, tmp_path):
     assert final["published_at"].startswith("2026-05-12")
     assert final["author"] == "@cool.creator"
     assert final["duration_seconds"] == 30
+
+
+# --- gallery-dl : extraction + classification d'un post /p/ ------------------
+
+def test_extract_post_parses_sidecar(monkeypatch):
+    import json as _json
+    payload = [
+        [2, {"username": "studio.archi"}],  # Message.Directory (ignoré)
+        [3, "https://cdn/0.jpg", {"extension": "jpg", "width": 1080, "height": 1350,
+                                  "username": "studio.archi", "fullname": "Studio",
+                                  "description": "5 idées déco salon\n#deco",
+                                  "date": "2026-05-12 08:30:00"}],
+        [3, "https://cdn/1.jpg", {"extension": "jpg", "width": 1080, "height": 1080}],
+        [3, "https://cdn/2.mp4", {"extension": "mp4", "width": 720, "height": 1280}],
+    ]
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[0] == "gallery-dl"
+        assert "-j" in cmd
+        return types.SimpleNamespace(stdout=_json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(ingest.subprocess, "run", fake_run)
+    post = ingest._extract_post("https://instagram.com/p/abc/", None)
+
+    assert [s["kind"] for s in post["slides"]] == ["image", "image", "video"]
+    assert post["slides"][0]["url"] == "https://cdn/0.jpg"
+    assert post["slides"][0]["ext"] == "jpg"
+    assert post["slides"][0]["width"] == 1080
+    assert post["meta"]["username"] == "studio.archi"
+
+
+def test_extract_post_passes_existing_cookiefile(monkeypatch, tmp_path):
+    cookie = tmp_path / "cookies.txt"
+    cookie.write_text("# Netscape HTTP Cookie File\n")
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return types.SimpleNamespace(stdout=b"[]")
+
+    monkeypatch.setattr(ingest.subprocess, "run", fake_run)
+    ingest._extract_post("https://instagram.com/p/abc/", str(cookie))
+
+    assert "--cookies" in seen["cmd"]
+    assert str(cookie) in seen["cmd"]
+
+
+def test_looks_like_image_post_url():
+    assert ingest._looks_like_image_post_url("https://instagram.com/p/abc/") is True
+    assert ingest._looks_like_image_post_url("https://www.instagram.com/reel/abc/") is False
+    assert ingest._looks_like_image_post_url("https://instagram.com/reels/abc/") is False
+    assert ingest._looks_like_image_post_url("https://instagram.com/tv/abc/") is False
+
+
+# --- branche image : download httpx + métadonnées + vignette image -----------
+
+def _fake_httpx(capture):
+    """Module httpx de remplacement : capture l'URL et renvoie des octets."""
+    mod = types.ModuleType("httpx")
+
+    class FakeResp:
+        def __init__(self, content):
+            self.content = content
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url):
+            capture["url"] = url
+            return FakeResp(b"IMGBYTES")
+
+    mod.Client = FakeClient
+    return mod
+
+
+def test_download_image_writes_file(monkeypatch, tmp_path):
+    cap = {}
+    monkeypatch.setitem(sys.modules, "httpx", _fake_httpx(cap))
+    dest = tmp_path / "videos/u/v/0.jpg"
+
+    ingest._download_image("https://cdn/0.jpg", dest)
+
+    assert dest.read_bytes() == b"IMGBYTES"
+    assert cap["url"] == "https://cdn/0.jpg"
+
+
+def test_thumbnail_image_has_no_seek(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        Path(cmd[-1]).write_bytes(b"\xff\xd8jpeg")
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(ingest.subprocess, "run", fake_run)
+    src = tmp_path / "0.jpg"
+    src.write_bytes(b"img")
+
+    ingest._thumbnail(src, tmp_path / "t.jpg", seek=False)
+    assert "-ss" not in captured["cmd"]
+
+    ingest._thumbnail(src, tmp_path / "t2.jpg")  # défaut vidéo : seek
+    assert "-ss" in captured["cmd"]
+
+
+def test_post_meta_to_info_maps_keys():
+    meta = {"username": "studio.archi", "fullname": "Studio",
+            "description": "Légende ici"}
+    info = ingest._post_meta_to_info(meta)
+    assert info["uploader_id"] == "studio.archi"
+    assert info["uploader"] == "Studio"
+    assert info["description"] == "Légende ici"
+    assert info["title"] == ""
+
+
+def test_published_at_from_gallery():
+    assert ingest._published_at_from_gallery({"date": "2026-05-12 08:30:00"}).startswith("2026-05-12")
+    assert ingest._published_at_from_gallery({}) is None
+    assert ingest._published_at_from_gallery({"date": "pas-une-date"}) is None
+
+
+async def test_run_ingest_image_carousel(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    def fake_extract(url, cookies):
+        return {
+            "slides": [
+                {"url": "https://cdn/0.jpg", "ext": "jpg", "kind": "image", "width": 1080, "height": 1350},
+                {"url": "https://cdn/1.jpg", "ext": "jpg", "kind": "image", "width": 1080, "height": 1080},
+                {"url": "https://cdn/2.mp4", "ext": "mp4", "kind": "video", "width": 720, "height": 1280},
+            ],
+            "meta": {"username": "studio.archi", "fullname": "Studio",
+                     "description": "5 idées déco salon\n\n#deco #home",
+                     "date": "2026-05-12 08:30:00"},
+        }
+
+    def fake_dl_image(url, dest):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"IMG:" + url.encode())
+
+    def fake_thumbnail(src, dst, seek=True):
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"\xff\xd8jpeg")
+
+    monkeypatch.setattr(ingest, "_extract_post", fake_extract)
+    monkeypatch.setattr(ingest, "_download_image", fake_dl_image)
+    monkeypatch.setattr(ingest, "_thumbnail", fake_thumbnail)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#abcdef")
+
+    await ingest.run_ingest("vid-img", "user-7", "https://www.instagram.com/p/abc/")
+
+    assert rec.statuses == ["fetching", "thumbnailing", "ready"]
+    final = rec.final
+    assert final["status"] == "ready"
+    assert final["media_type"] == "image"
+    assert len(final["media"]) == 2  # la slide vidéo est ignorée
+    assert final["media"][0] == {"i": 0, "path": "videos/user-7/vid-img/0.jpg", "w": 1080, "h": 1350}
+    assert final["media"][1] == {"i": 1, "path": "videos/user-7/vid-img/1.jpg", "w": 1080, "h": 1080}
+    assert final["storage_path"] == "videos/user-7/vid-img/0.jpg"
+    assert final["thumb_path"] == "thumbs/user-7/vid-img.jpg"
+    assert final["title"] == "5 idées déco salon"
+    assert final["author"] == "@studio.archi"
+    assert final["duration_seconds"] is None
+    assert final["published_at"].startswith("2026-05-12")
+    assert final["thumb_color"] == "#abcdef"
+    assert (tmp_path / "videos/user-7/vid-img/0.jpg").exists()
+    assert (tmp_path / "videos/user-7/vid-img/1.jpg").exists()
+    assert not (tmp_path / "videos/user-7/vid-img/2.mp4").exists()
+
+
+async def test_run_ingest_p_url_pure_video_falls_back(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    monkeypatch.setattr(ingest, "_extract_post",
+                        lambda url, cookies: {"slides": [{"url": "x", "ext": "mp4", "kind": "video"}], "meta": {}})
+
+    def fake_download(url, dest, cookies, max_mb):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"v")
+        return {"title": "t", "duration": 5}
+
+    monkeypatch.setattr(ingest, "_download", fake_download)
+    monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
+
+    await ingest.run_ingest("vid-pv", "user-7", "https://instagram.com/p/onlyvideo/")
+
+    final = rec.final
+    assert final["status"] == "ready"
+    assert final.get("media_type") in (None, "video")  # pas de branche image
+    assert final["storage_path"] == "videos/user-7/vid-pv.mp4"
+
+
+async def test_run_ingest_gallerydl_failure_falls_back(monkeypatch, tmp_path):
+    _set_env(monkeypatch, tmp_path)
+    rec = Recorder()
+    monkeypatch.setattr(supa, "update_video", rec.update_video)
+
+    def boom(url, cookies):
+        raise RuntimeError("gallery-dl absent")
+
+    def fake_download(url, dest, cookies, max_mb):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"v")
+        return {"title": "t", "duration": 5}
+
+    monkeypatch.setattr(ingest, "_extract_post", boom)
+    monkeypatch.setattr(ingest, "_download", fake_download)
+    monkeypatch.setattr(ingest, "_thumbnail", _write_thumb)
+    monkeypatch.setattr(ingest, "_dominant_color", lambda src: "#a78bfa")
+    monkeypatch.setattr(ingest, "_ensure_ios_compatible", lambda p: None)
+
+    await ingest.run_ingest("vid-fb", "user-7", "https://instagram.com/p/x/")
+
+    final = rec.final
+    assert final["status"] == "ready"
+    assert final["storage_path"] == "videos/user-7/vid-fb.mp4"

@@ -17,7 +17,7 @@ import {
   unlockBiometric,
   clearBiometric,
 } from './lib/biometric';
-import { setAuthTokenGetter, getMediaUrl } from './lib/api';
+import { setAuthTokenGetter, getMediaUrl, getSlides } from './lib/api';
 import { createThumbnailLoader, type ThumbnailLoader } from './lib/thumbnails';
 import * as db from './lib/db';
 import type { Category, Video } from './lib/types';
@@ -28,6 +28,7 @@ import { EmptyScreen } from './screens/EmptyScreen';
 import { CategoriesScreen } from './screens/CategoriesScreen';
 import { ImportScreen } from './screens/ImportScreen';
 import { PlayerScreen } from './screens/PlayerScreen';
+import { GalleryScreen } from './screens/GalleryScreen';
 import { AccountSheet } from './screens/AccountSheet';
 import { Toast } from './components/Toast';
 import { detectCompletions, type Completion } from './lib/importToasts';
@@ -145,6 +146,7 @@ function AppShell({ onSignOut }: AppShellProps) {
   const [route, setRoute] = useState<Route>('library');
   const [current, setCurrent] = useState<Video | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [slides, setSlides] = useState<string[] | null>(null);
   // Video pending deletion via library long-press (confirmation sheet).
   const [pendingDelete, setPendingDelete] = useState<Video | null>(null);
   // Monotonic counter identifying the most recent openVideo request, so a stale
@@ -255,16 +257,19 @@ function AppShell({ onSignOut }: AppShellProps) {
   const openVideo = async (v: Video) => {
     setCurrent(v);
     setStreamUrl(null);
+    setSlides(null);
     go('player');
-    // Guard against a race when videos are opened in quick succession: a slow
-    // getMediaUrl for an earlier video must not overwrite the stream URL of the
-    // one now showing. Only the latest request is allowed to apply its result.
     const reqId = ++openVideoReq.current;
     try {
-      const { stream_url } = await getMediaUrl(v.id);
-      if (openVideoReq.current === reqId) setStreamUrl(stream_url);
+      if (v.media_type === 'image') {
+        const s = await getSlides(v.id);
+        if (openVideoReq.current === reqId) setSlides(s);
+      } else {
+        const { stream_url } = await getMediaUrl(v.id);
+        if (openVideoReq.current === reqId) setStreamUrl(stream_url ?? null);
+      }
     } catch {
-      if (openVideoReq.current === reqId) setStreamUrl(null);
+      if (openVideoReq.current === reqId) { setStreamUrl(null); setSlides(null); }
     }
   };
 
@@ -365,9 +370,13 @@ function AppShell({ onSignOut }: AppShellProps) {
             onClose={() => go('library')} onSaved={handleSaved} />
         )}
         {route === 'player' && current && (
-          <PlayerScreen video={current} categories={categories} streamUrl={streamUrl}
-            onBack={() => go('library')} onUpdate={handleUpdateVideo}
-            onDelete={(v) => { void handleDeleteVideo(v); go('library'); }} />
+          current.media_type === 'image'
+            ? <GalleryScreen video={current} categories={categories} slides={slides}
+                onBack={() => go('library')} onUpdate={handleUpdateVideo}
+                onDelete={(v) => { void handleDeleteVideo(v); go('library'); }} />
+            : <PlayerScreen video={current} categories={categories} streamUrl={streamUrl}
+                onBack={() => go('library')} onUpdate={handleUpdateVideo}
+                onDelete={(v) => { void handleDeleteVideo(v); go('library'); }} />
         )}
       </div>
 

@@ -16,6 +16,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from . import supa
 from .config import get_settings
@@ -83,6 +84,109 @@ def _download(url: str, dest: Path, cookies: Optional[str], max_mb: int) -> dict
     return info or {}
 
 
+# Extensions considérées comme des images (le reste = vidéo, on les ignore).
+_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "heic"}
+
+
+def _looks_like_image_post_url(url: str) -> bool:
+    """True si l'URL PEUT porter des images (post ``/p/``).
+
+    Les Reels / IGTV sont toujours des vidéos → on saute gallery-dl pour eux.
+    Tout le reste (``/p/`` ou forme inconnue) est tenté en extraction image,
+    avec repli vidéo si aucune image n'en sort (cf. ``run_ingest``).
+    """
+    try:
+        path = (urlparse(url).path or "").lower()
+    except Exception:
+        return False
+    return not ("/reel/" in path or "/reels/" in path or "/tv/" in path)
+
+
+def _extract_post(url: str, cookies: Optional[str]) -> dict:
+    """Classe un post Instagram via ``gallery-dl -j`` (extraction SANS download).
+
+    Renvoie ``{"slides": [{"url","ext","kind","width","height"}, …], "meta": {…}}``.
+    ``gallery-dl -j`` sérialise une liste de messages ; chaque message
+    ``[3, url, metadata]`` (``Message.Url``) décrit un média. ``kind`` vaut
+    ``"image"`` quand l'extension est dans :data:`_IMAGE_EXTS`, sinon ``"video"``.
+    Helper isolé (subprocess) pour être mocké en test, comme yt-dlp/ffmpeg.
+    """
+    import json
+
+    cmd = ["gallery-dl", "-j"]
+    if cookies and Path(cookies).exists():
+        cmd += ["--cookies", cookies]
+    cmd.append(url)
+    out = subprocess.run(
+        cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    ).stdout
+    data = json.loads(out.decode("utf-8", "ignore") or "[]")
+
+    slides: list[dict] = []
+    meta: dict = {}
+    for item in data:
+        if not (isinstance(item, list) and len(item) >= 3 and item[0] == 3):
+            continue
+        media_url, kw = item[1], item[2]
+        if not isinstance(kw, dict):
+            kw = {}
+        if not meta:
+            meta = kw
+        ext = str(kw.get("extension", "")).lower()
+        kind = "image" if ext in _IMAGE_EXTS else "video"
+        slides.append({
+            "url": media_url,
+            "ext": ext or "jpg",
+            "kind": kind,
+            "width": kw.get("width"),
+            "height": kw.get("height"),
+        })
+    return {"slides": slides, "meta": meta}
+
+
+def _download_image(url: str, dest: Path) -> None:
+    """Télécharge une image (slide de carrousel) vers ``dest`` via httpx.
+
+    Les URLs d'images du CDN Instagram sont publiques (signées en query) →
+    pas besoin de cookies ici. Helper isolé pour être mocké en test.
+    """
+    import httpx
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with httpx.Client(follow_redirects=True, timeout=30) as client:
+        resp = client.get(url)
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
+
+
+def _post_meta_to_info(meta: dict) -> dict:
+    """Adapte les métadonnées gallery-dl au format ``info`` (yt-dlp) attendu par
+    les extracteurs de titre/auteur/légende existants (DRY)."""
+    return {
+        "description": meta.get("description") or "",
+        "uploader_id": meta.get("username"),
+        "uploader": meta.get("fullname"),
+        "title": "",
+    }
+
+
+def _published_at_from_gallery(meta: dict) -> Optional[str]:
+    """Convertit la date gallery-dl (``"YYYY-MM-DD HH:MM:SS"``) en ISO-8601 UTC.
+
+    Naïf → traité comme UTC. Toute valeur illisible → None.
+    """
+    raw = meta.get("date")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace(" ", "T"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 def _video_codec(path: Path) -> Optional[str]:
     """Return the first video stream's codec name (``h264``/``vp9``/…) or None."""
     try:
@@ -127,18 +231,18 @@ def _ensure_ios_compatible(path: Path) -> None:
     tmp.replace(path)
 
 
-def _thumbnail(src: Path, dst: Path) -> None:
-    """Extract a frame (~1s) from ``src`` to ``dst`` (640px wide jpeg) via ffmpeg."""
+def _thumbnail(src: Path, dst: Path, seek: bool = True) -> None:
+    """Extrait une frame de ``src`` vers ``dst`` (jpeg 640px) via ffmpeg.
+
+    ``seek=True`` (défaut, vidéo) saute ~1 s avant la capture ; ``seek=False``
+    (image fixe) capture l'unique frame sans seek (sinon ffmpeg échoue).
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "ffmpeg", "-y", "-ss", "1", "-i", str(src),
-            "-frames:v", "1", "-vf", "scale=640:-1", str(dst),
-        ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    cmd = ["ffmpeg", "-y"]
+    if seek:
+        cmd += ["-ss", "1"]
+    cmd += ["-i", str(src), "-frames:v", "1", "-vf", "scale=640:-1", str(dst)]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def _dominant_color(src: Path) -> str:
@@ -314,59 +418,110 @@ def _resolve_title(info: dict) -> str:
 # --- pipeline ---------------------------------------------------------------
 
 async def run_ingest(video_id: str, user_id: str, url: str) -> None:
-    """Run the full ingestion pipeline for an already-created ``videos`` row.
+    """Pipeline complet pour une ligne ``videos`` déjà créée.
 
-    Never raises: failures are recorded as ``status='error'`` on the row.
-    External I/O (yt-dlp, ffmpeg) runs in a worker thread to avoid blocking
-    the event loop.
+    Ne lève jamais : tout échec est enregistré en ``status='error'``. Classe le
+    post puis bifurque : branche **image** (gallery-dl + httpx) si l'URL peut
+    porter des images ET qu'au moins une slide image en sort ; sinon branche
+    **vidéo** (yt-dlp, inchangée), qui sert aussi de repli.
     """
     settings = get_settings()
-    rel_video = settings.rel_video_path(user_id, video_id)
-    rel_thumb = settings.rel_thumb_path(user_id, video_id)
-    video_path = settings.abs_path(rel_video)
-    thumb_path = settings.abs_path(rel_thumb)
-
     try:
         supa.update_video(video_id, {"status": "fetching"})
-        info = await asyncio.to_thread(
-            _download, url, video_path, settings.ig_cookies_file, settings.max_video_mb
-        )
 
-        # yt-dlp peut abandonner (ex. max_filesize dépassé) sans toujours lever :
-        # on vérifie qu'un fichier non-vide a bien été produit pour une erreur claire.
-        if not video_path.exists() or video_path.stat().st_size == 0:
-            raise RuntimeError("aucun fichier téléchargé (taille max dépassée ou vidéo indisponible)")
+        if _looks_like_image_post_url(url):
+            try:
+                post = await asyncio.to_thread(_extract_post, url, settings.ig_cookies_file)
+                images = [s for s in post["slides"] if s["kind"] == "image"]
+            except Exception:  # noqa: BLE001 — extraction KO → repli vidéo
+                images = []
+                post = {"meta": {}}
+            if images:
+                await _finish_image_post(video_id, user_id, images, post["meta"], settings)
+                return
 
-        # Normalise to an iOS-decodable file (H.264 + faststart) before marking
-        # ready, so a VP9/AV1 download never reaches the iPhone as a black player.
-        await asyncio.to_thread(_ensure_ios_compatible, video_path)
-
-        supa.update_video(video_id, {"status": "thumbnailing"})
-        await asyncio.to_thread(_thumbnail, video_path, thumb_path)
-        color = await asyncio.to_thread(_dominant_color, video_path)
-
-        supa.update_video(
-            video_id,
-            {
-                "status": "ready",
-                "storage_path": rel_video,
-                "thumb_path": rel_thumb,
-                "title": _resolve_title(info),
-                "author": _extract_author(info),
-                "duration_seconds": _extract_duration(info),
-                "caption": _extract_caption(info),
-                "published_at": _extract_published_at(info),
-                "thumb_color": color,
-            },
-        )
+        await _finish_video_post(video_id, user_id, url, settings)
     except asyncio.CancelledError:
-        # Cancelled by DELETE (Spec 06): stop here without rewriting any file or
-        # status — the row + files are being purged by the caller. Re-raise so
-        # the task is properly marked cancelled.
+        # Annulé par DELETE (Spec 06) : on s'arrête sans réécrire fichier ni statut.
         raise
-    except Exception as exc:  # noqa: BLE001 — any failure -> error status, no crash
+    except Exception as exc:  # noqa: BLE001 — tout échec -> status error, pas de crash
         message = str(exc) or exc.__class__.__name__
         try:
             supa.update_video(video_id, {"status": "error", "error": message[:500]})
         except Exception:
             pass
+
+
+async def _finish_video_post(video_id: str, user_id: str, url: str, settings) -> None:
+    """Branche vidéo : yt-dlp -> normalisation iOS -> vignette -> ready (inchangée)."""
+    rel_video = settings.rel_video_path(user_id, video_id)
+    rel_thumb = settings.rel_thumb_path(user_id, video_id)
+    video_path = settings.abs_path(rel_video)
+    thumb_path = settings.abs_path(rel_thumb)
+
+    info = await asyncio.to_thread(
+        _download, url, video_path, settings.ig_cookies_file, settings.max_video_mb
+    )
+    if not video_path.exists() or video_path.stat().st_size == 0:
+        raise RuntimeError("aucun fichier téléchargé (taille max dépassée ou vidéo indisponible)")
+
+    await asyncio.to_thread(_ensure_ios_compatible, video_path)
+
+    supa.update_video(video_id, {"status": "thumbnailing"})
+    await asyncio.to_thread(_thumbnail, video_path, thumb_path)
+    color = await asyncio.to_thread(_dominant_color, video_path)
+
+    supa.update_video(
+        video_id,
+        {
+            "status": "ready",
+            "storage_path": rel_video,
+            "thumb_path": rel_thumb,
+            "title": _resolve_title(info),
+            "author": _extract_author(info),
+            "duration_seconds": _extract_duration(info),
+            "caption": _extract_caption(info),
+            "published_at": _extract_published_at(info),
+            "thumb_color": color,
+        },
+    )
+
+
+async def _finish_image_post(video_id: str, user_id: str, images: list, post_meta: dict, settings) -> None:
+    """Branche image : télécharge les slides, vignette/couleur sur la slide 0,
+    puis enregistre ``media_type='image'`` + le tableau ``media``."""
+    media: list[dict] = []
+    for i, img in enumerate(images):
+        ext = (img.get("ext") or "jpg").lower()
+        rel = settings.rel_slide_path(user_id, video_id, i, ext)
+        dest = settings.abs_path(rel)
+        await asyncio.to_thread(_download_image, img["url"], dest)
+        if not dest.exists() or dest.stat().st_size == 0:
+            raise RuntimeError("slide image vide ou indisponible")
+        media.append({"i": i, "path": rel, "w": img.get("width"), "h": img.get("height")})
+
+    cover = settings.abs_path(media[0]["path"])
+    rel_thumb = settings.rel_thumb_path(user_id, video_id)
+    thumb_path = settings.abs_path(rel_thumb)
+
+    supa.update_video(video_id, {"status": "thumbnailing"})
+    await asyncio.to_thread(_thumbnail, cover, thumb_path, False)
+    color = await asyncio.to_thread(_dominant_color, cover)
+
+    info = _post_meta_to_info(post_meta)
+    supa.update_video(
+        video_id,
+        {
+            "status": "ready",
+            "media_type": "image",
+            "media": media,
+            "storage_path": media[0]["path"],
+            "thumb_path": rel_thumb,
+            "title": _resolve_title(info),
+            "author": _extract_author(info),
+            "duration_seconds": None,
+            "caption": _extract_caption(info),
+            "published_at": _published_at_from_gallery(post_meta),
+            "thumb_color": color,
+        },
+    )

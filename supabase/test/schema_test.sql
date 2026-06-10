@@ -10,6 +10,8 @@ $$;
 
 -- Applique la migration réelle
 \i :migration
+-- Puis la migration des publications à images (colonnes media_type + media)
+\i :migration4
 
 -- Rôle non-propriétaire pour FORCER l'application des RLS
 create role app_user nologin;
@@ -67,6 +69,34 @@ begin
    where schemaname='public' and tablename in ('categories','videos','api_tokens') and rowsecurity=true;
   if n <> 3 then raise exception 'RLS FAIL: % tables avec RLS (attendu 3)', n; end if;
   raise notice 'TEST3 OK: RLS activee sur 3 tables';
+end $$;
+
+-- TEST 4 : media_type + media (publications à images)
+do $$
+declare uid_c uuid; vid_c uuid; mt text; md jsonb;
+begin
+  insert into auth.users (email) values ('c@test.io') returning id into uid_c;
+  insert into public.videos (user_id, source_url)
+    values (uid_c, 'https://instagram.com/p/c')
+    returning id, media_type, media into vid_c, mt, md;
+  if mt <> 'video' then
+    raise exception 'MEDIA FAIL: default media_type attendu video, obtenu %', mt;
+  end if;
+  if md is not null then
+    raise exception 'MEDIA FAIL: default media attendu null';
+  end if;
+  -- la contrainte CHECK rejette une valeur invalide
+  begin
+    update public.videos set media_type = 'audio' where id = vid_c;
+    raise exception 'MEDIA FAIL: media_type=audio aurait du etre rejete';
+  exception when check_violation then null;
+  end;
+  -- un post image valide est accepté
+  update public.videos
+     set media_type = 'image',
+         media = '[{"i":0,"path":"videos/x/0.jpg","w":1080,"h":1350}]'::jsonb
+   where id = vid_c;
+  raise notice 'TEST4 OK: media_type + media';
 end $$;
 
 select 'ALL SCHEMA TESTS PASSED' as result;
