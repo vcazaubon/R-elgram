@@ -26,14 +26,19 @@ from .models import (
     IngestResponse,
     IngestStatus,
     MediaUrls,
+    PublicShareMeta,
     ShareCreate,
     ShareCreated,
     ShareInfo,
     ShareGlobalInfo,
+    ShareUnlock,
 )
 from .models import status_to_step
 
 MEDIA_TTL = 3600  # signed media URL lifetime (~1h, cf. §5)
+SHARE_TOKEN_TTL = 3600  # share media token lifetime (~1h)
+
+_unlock_rl = shares_mod.RateLimiter(max_attempts=5, window_seconds=900)
 
 # Strong refs to in-flight ingest tasks so they are not GC'd mid-run.
 _ingest_tasks: set = set()
@@ -320,6 +325,130 @@ def _build_shares_router() -> APIRouter:
     return router
 
 
+# --- public share helpers + router ------------------------------------------
+
+def _public_media_urls(slug: str, video: dict) -> dict:
+    token = media.sign_share_token(slug, ttl=SHARE_TOKEN_TTL)
+    thumb = f"/api/share/{slug}/thumb?t={token}"
+    if video.get("media_type") == "image":
+        slides = [f"/api/share/{slug}/slide/{m['i']}?t={token}" for m in (video.get("media") or [])]
+        return {"slides": slides, "thumb_url": thumb}
+    return {"stream_url": f"/api/share/{slug}/stream?t={token}", "thumb_url": thumb}
+
+
+def _resolve_active_share(slug: str) -> dict:
+    """Renvoie la ligne share si active ; 404 si inconnue, 410 si expirée/révoquée."""
+    row = supa.get_share_by_slug(slug)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    if shares_mod.share_status(row) != "active":
+        raise HTTPException(status_code=410, detail="Link no longer active")
+    return row
+
+
+def _share_token_owner_slug(slug: str, t: str) -> None:
+    try:
+        tok_slug = media.verify_share_token(t)
+    except media.MediaTokenError:
+        raise HTTPException(status_code=403, detail="Invalid token")
+    if tok_slug != slug:
+        raise HTTPException(status_code=403, detail="Token not valid for this link")
+
+
+def _build_public_share_router() -> APIRouter:
+    router = APIRouter(prefix="/share", tags=["public-share"])
+
+    @router.get("/{slug}", response_model=PublicShareMeta)
+    async def resolve(slug: str):
+        row = _resolve_active_share(slug)
+        video = supa.get_video_service(row["video_id"])
+        if not video:
+            raise HTTPException(status_code=410, detail="Link no longer active")
+        try:
+            supa.increment_share_view(row["id"], row.get("view_count", 0) + 1,
+                                      datetime.now(timezone.utc).isoformat())
+        except Exception:
+            pass
+        meta = {"media_type": video.get("media_type", "video"), "title": video.get("title", ""),
+                "needs_password": bool(row.get("password_hash")), "expires_at": row.get("expires_at")}
+        if not row.get("password_hash"):
+            meta.update(_public_media_urls(slug, video))
+        return PublicShareMeta(**meta)
+
+    @router.post("/{slug}/unlock", response_model=PublicShareMeta)
+    async def unlock(slug: str, body: ShareUnlock, request: Request):
+        row = _resolve_active_share(slug)
+        ip = request.client.host if request.client else "?"
+        if not _unlock_rl.allow(f"{slug}:{ip}"):
+            raise HTTPException(status_code=429, detail="Too many attempts")
+        if not shares_mod.verify_password(body.password, row.get("password_hash")):
+            raise HTTPException(status_code=403, detail="Wrong password")
+        video = supa.get_video_service(row["video_id"])
+        if not video:
+            raise HTTPException(status_code=410, detail="Link no longer active")
+        meta = {"media_type": video.get("media_type", "video"), "title": video.get("title", ""),
+                "needs_password": True, "expires_at": row.get("expires_at")}
+        meta.update(_public_media_urls(slug, video))
+        return PublicShareMeta(**meta)
+
+    @router.get("/{slug}/stream")
+    async def stream(slug: str, request: Request, t: str = Query(...)):
+        _share_token_owner_slug(slug, t)
+        row = _resolve_active_share(slug)
+        video = supa.get_video_service(row["video_id"])
+        if not video or not video.get("storage_path"):
+            raise HTTPException(status_code=404, detail="Not found")
+        path = get_settings().abs_path(video["storage_path"])
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="File missing")
+        return media.stream_file(path, request.headers.get("Range"), media_type="video/mp4")
+
+    @router.get("/{slug}/slide/{i}")
+    async def slide(slug: str, i: int, request: Request, t: str = Query(...)):
+        _share_token_owner_slug(slug, t)
+        row = _resolve_active_share(slug)
+        video = supa.get_video_service(row["video_id"])
+        if not video:
+            raise HTTPException(status_code=404, detail="Not found")
+        entry = next((m for m in (video.get("media") or []) if m.get("i") == i), None)
+        if not entry or not entry.get("path"):
+            raise HTTPException(status_code=404, detail="Slide not found")
+        path = get_settings().abs_path(entry["path"])
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="File missing")
+        _MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+                 "webp": "image/webp", "heic": "image/heic"}
+        ext = entry["path"].lower().rsplit(".", 1)[-1] if "." in entry["path"] else ""
+        return media.stream_file(path, request.headers.get("Range"), media_type=_MIME.get(ext, "image/jpeg"))
+
+    @router.get("/{slug}/thumb")
+    async def thumb(slug: str, request: Request, t: str = Query(...)):
+        _share_token_owner_slug(slug, t)
+        row = _resolve_active_share(slug)
+        video = supa.get_video_service(row["video_id"])
+        if not video or not video.get("thumb_path"):
+            raise HTTPException(status_code=404, detail="Not found")
+        path = get_settings().abs_path(video["thumb_path"])
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="File missing")
+        return media.stream_file(path, request.headers.get("Range"), media_type="image/jpeg")
+
+    @router.get("/{slug}/og")
+    async def og_thumb(slug: str, request: Request):
+        row = _resolve_active_share(slug)
+        if row.get("password_hash"):
+            raise HTTPException(status_code=404, detail="Protected")
+        video = supa.get_video_service(row["video_id"])
+        if not video or not video.get("thumb_path"):
+            raise HTTPException(status_code=404, detail="Not found")
+        path = get_settings().abs_path(video["thumb_path"])
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="File missing")
+        return media.stream_file(path, request.headers.get("Range"), media_type="image/jpeg")
+
+    return router
+
+
 # --- app factory ------------------------------------------------------------
 
 @asynccontextmanager
@@ -347,6 +476,7 @@ def create_app() -> FastAPI:
     api.include_router(_build_ingest_router())
     api.include_router(_build_videos_router())
     api.include_router(_build_shares_router())
+    api.include_router(_build_public_share_router())
 
     from .tokens import router as tokens_router
     api.include_router(tokens_router)
