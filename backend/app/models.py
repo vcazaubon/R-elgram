@@ -61,3 +61,52 @@ class MediaUrls(BaseModel):
     stream_url: Optional[str] = None   # vidéo uniquement
     slides: Optional[list[str]] = None  # post image : URLs signées par slide
     thumb_url: str
+
+
+class ShareCreate(BaseModel):
+    expires_in: Optional[str] = None   # '24h' | '7d' | '30d' | None (permanent)
+    password: Optional[str] = None
+
+
+class ShareCreated(BaseModel):
+    id: str
+    slug: str
+    url: str
+    expires_at: Optional[str] = None
+    has_password: bool = False
+
+
+class ShareInfo(BaseModel):
+    id: str
+    slug: str
+    url: str
+    status: str                        # active | expired | revoked
+    expires_at: Optional[str] = None
+    has_password: bool = False
+    view_count: int = 0
+    created_at: str
+
+
+class ShareVideoRef(BaseModel):
+    id: str
+    title: str
+    thumb_color: Optional[str] = None
+    media_type: str = "video"
+
+
+class ShareGlobalInfo(ShareInfo):
+    video: Optional[ShareVideoRef] = None
+
+
+class PublicShareMeta(BaseModel):
+    media_type: str = "video"
+    title: str
+    needs_password: bool = False
+    expires_at: Optional[str] = None
+    stream_url: Optional[str] = None
+    slides: Optional[list[str]] = None
+    thumb_url: Optional[str] = None
+
+
+class ShareUnlock(BaseModel):
+    password: str
