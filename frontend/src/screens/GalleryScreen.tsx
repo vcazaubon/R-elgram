@@ -12,6 +12,7 @@ import type { Category, Video } from '../lib/types';
 import { categoryFor, formatAuthor, formatDate } from '../lib/format';
 import { gradientFromColor } from '../lib/color';
 import { MediaActionSheet, ActionBtn, type SheetType } from './MediaActionSheet';
+import { ShareSheet } from './ShareSheet';
 import { activeIndexFromScroll } from './galleryLogic';
 
 export interface GalleryScreenProps {
@@ -28,6 +29,7 @@ export function GalleryScreen({ video, categories, slides, onBack, onUpdate, onD
   const trackRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   const [sheet, setSheet] = useState<SheetType | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [title, setTitle] = useState(video.title);
 
   const cat = categoryFor(video.category_id, categories);
@@ -113,7 +115,9 @@ export function GalleryScreen({ video, categories, slides, onBack, onUpdate, onD
         onRename={(t) => { const next = t.trim(); if (next) { setTitle(next); onUpdate({ title: next }); } setSheet(null); }}
         onCategory={(id) => { onUpdate({ category_id: id }); setSheet(null); }}
         onDelete={() => { setSheet(null); onDelete(video); }}
+        onShare={() => { setSheet(null); setShareOpen(true); }}
       />}
+      {shareOpen && <ShareSheet videoId={video.id} videoTitle={title} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }

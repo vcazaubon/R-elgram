@@ -36,9 +36,10 @@ export interface MediaActionSheetProps {
   onRename: (title: string) => void;
   onCategory: (id: string | null) => void;
   onDelete: () => void;
+  onShare?: () => void;
 }
 
-export function MediaActionSheet({ type, title, categories, currentCategoryId, onClose, onRename, onCategory, onDelete }: MediaActionSheetProps) {
+export function MediaActionSheet({ type, title, categories, currentCategoryId, onClose, onRename, onCategory, onDelete, onShare }: MediaActionSheetProps) {
   const [draft, setDraft] = useState(title);
   return (
     <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 40, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
@@ -50,8 +51,7 @@ export function MediaActionSheet({ type, title, categories, currentCategoryId, o
 
         {type === 'more' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <SheetRow icon={Icons.edit} label="Renommer" onClick={() => {}} disabled />
-            <p style={{ fontSize: 13, color: 'var(--txt-2)', textAlign: 'center', padding: 20 }}>Utilise les actions ci-dessous.</p>
+            <SheetRow icon={Icons.share} label="Partager" onClick={() => onShare?.()} />
           </div>
         )}
 
