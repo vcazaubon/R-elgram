@@ -93,7 +93,7 @@ function Carousel({ slides, title }: { slides: string[]; title: string }) {
   return (
     <div style={{ position: 'relative', zIndex: 2, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ position: 'relative', flex: 1, margin: '0 16px', borderRadius: 24, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)' }}>
-        <div onScroll={onScroll} style={{ display: 'flex', width: '100%', height: '100%', overflowX: 'auto', scrollSnapType: 'x mandatory', scrollbarWidth: 'none' }}>
+        <div onScroll={onScroll} className="scroll" style={{ display: 'flex', width: '100%', height: '100%', overflowX: 'auto', scrollSnapType: 'x mandatory', scrollbarWidth: 'none' }}>
           {slides.map((src, i) => (
             <div key={i} style={{ position: 'relative', flex: '0 0 100%', height: '100%', scrollSnapAlign: 'center', display: 'grid', placeItems: 'center' }}>
               <img src={src} alt="" aria-hidden style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(28px) brightness(0.5)', transform: 'scale(1.2)' }} />

@@ -10,7 +10,7 @@ describe('isolation du bundle public', () => {
   it('aucun import de supabase / auth', () => {
     for (const f of readdirSync(dir)) {
       if (!f.endsWith('.tsx') && !f.endsWith('.ts')) continue;
-      if (f.endsWith('.test.ts')) continue;
+      if (f.includes('.test.')) continue;
       const src = readFileSync(dir + f, 'utf-8');
       expect(src).not.toMatch(/@supabase\/supabase-js/);
       expect(src).not.toMatch(/lib\/supabase/);
