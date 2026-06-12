@@ -270,3 +270,9 @@ def test_shell_expired_410(client, monkeypatch):
     monkeypatch.setattr(supa, "get_share_by_slug",
                         lambda slug: _ready_share_row(revoked_at="2000-01-01T00:00:00+00:00"))
     assert client.get("/s/abc").status_code == 410
+
+
+def test_shell_unknown_slug_404(client, monkeypatch):
+    from app import supa
+    monkeypatch.setattr(supa, "get_share_by_slug", lambda slug: None)
+    assert client.get("/s/nope").status_code == 404

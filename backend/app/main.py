@@ -463,11 +463,12 @@ def _render_share_shell(slug: str, *, title: str, protected: bool, media_type: s
     else:
         og_title, og_desc = safe_title, "Partagé via Réelgram"
         og_image_tag = f'<meta property="og:image" content="{base}/api/share/{slug}/og">'
+    og_type = "video.other" if media_type == "video" else "website"
     dist = get_settings().public_dist_dir
     head_extra = (
         f'<meta property="og:title" content="{og_title}">'
         f'<meta property="og:description" content="{og_desc}">'
-        f'<meta property="og:type" content="video.other">'
+        f'<meta property="og:type" content="{og_type}">'
         f'<meta property="og:url" content="{page_url}">'
         f'{og_image_tag}'
         f'<meta name="twitter:card" content="summary_large_image">'
