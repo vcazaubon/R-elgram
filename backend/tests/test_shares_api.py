@@ -121,3 +121,10 @@ def test_revoke_share(client, monkeypatch):
 def test_create_share_requires_auth(client):
     r = client.post("/api/videos/v1/shares", json={"expires_in": "7d"})
     assert r.status_code == 401
+
+
+def test_create_share_invalid_expires_in(client, monkeypatch):
+    from app import supa
+    monkeypatch.setattr(supa, "get_video", lambda vid, user_id=None: {"id": vid, "status": "ready"})
+    r = client.post("/api/videos/v1/shares", json={"expires_in": "99y"}, headers=_auth())
+    assert r.status_code == 400

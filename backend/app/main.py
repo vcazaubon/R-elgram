@@ -30,7 +30,6 @@ from .models import (
     ShareCreated,
     ShareInfo,
     ShareGlobalInfo,
-    ShareVideoRef,
 )
 from .models import status_to_step
 
