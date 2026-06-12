@@ -38,15 +38,19 @@ export function ShareSheet({ videoId, videoTitle, onClose }: ShareSheetProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (initial = false) => {
     setLoading(true);
-    try { setShares(await api.listVideoShares(videoId)); }
-    catch { /* garde la dernière liste connue */ }
+    try {
+      const list = await api.listVideoShares(videoId);
+      setShares(list);
+      // Auto-ouvre la configuration UNIQUEMENT au chargement initial (réel sans
+      // lien) — jamais après une révocation qui viderait la liste.
+      if (initial && list.length === 0) setPhase({ kind: 'configure' });
+    } catch { /* garde la dernière liste connue */ }
     finally { setLoading(false); }
   }, [videoId]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { if (!loading && shares.length === 0 && phase.kind === 'list') setPhase({ kind: 'configure' }); }, [loading, shares.length, phase.kind]);
+  useEffect(() => { void refresh(true); }, [refresh]);
 
   const create = async () => {
     setBusy(true); setError(null);
@@ -88,6 +92,12 @@ export function ShareSheet({ videoId, videoTitle, onClose }: ShareSheetProps) {
           <>
             <h3 style={{ fontSize: 17, fontWeight: 680, marginBottom: 2 }}>Liens de ce réel</h3>
             <p style={{ fontSize: 12.5, color: 'var(--txt-2)', marginBottom: 16, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{videoTitle}</p>
+            {loading && shares.length === 0 ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '18px 0' }}>
+                <span style={{ width: 22, height: 22, borderRadius: '50%', border: '2.5px solid var(--hairline-strong)', borderTopColor: 'var(--a-violet)', display: 'block', animation: 'spin 0.7s linear infinite' }} />
+                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+              </div>
+            ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {shares.map((s) => {
                 const b = statusBadge(s);
@@ -109,6 +119,7 @@ export function ShareSheet({ videoId, videoTitle, onClose }: ShareSheetProps) {
                 );
               })}
             </div>
+            )}
             <button onClick={() => setPhase({ kind: 'configure' })} style={newLinkBtn}><Icons.plus size={17} /> Nouveau lien</button>
           </>
         )}
