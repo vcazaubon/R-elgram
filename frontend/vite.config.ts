@@ -67,4 +67,12 @@ export default defineConfig({
     port: 10009,
     strictPort: true,
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        'public-share': 'public-share.html',
+      },
+    },
+  },
 });
