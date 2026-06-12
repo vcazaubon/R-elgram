@@ -11,9 +11,11 @@ is the off switch.
 from __future__ import annotations
 
 import asyncio
+import html as _html
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
@@ -449,6 +451,41 @@ def _build_public_share_router() -> APIRouter:
     return router
 
 
+# --- public share shell -----------------------------------------------------
+
+def _render_share_shell(slug: str, *, title: str, protected: bool, media_type: str) -> str:
+    base = get_settings().public_base_url.rstrip("/")
+    page_url = f"{base}/s/{slug}"
+    safe_title = _html.escape(title or "Réelgram")
+    if protected:
+        og_title, og_desc = "Réel protégé · Réelgram", "Saisis le code pour voir ce réel."
+        og_image_tag = ""
+    else:
+        og_title, og_desc = safe_title, "Partagé via Réelgram"
+        og_image_tag = f'<meta property="og:image" content="{base}/api/share/{slug}/og">'
+    dist = get_settings().public_dist_dir
+    head_extra = (
+        f'<meta property="og:title" content="{og_title}">'
+        f'<meta property="og:description" content="{og_desc}">'
+        f'<meta property="og:type" content="video.other">'
+        f'<meta property="og:url" content="{page_url}">'
+        f'{og_image_tag}'
+        f'<meta name="twitter:card" content="summary_large_image">'
+        f'<title>{og_title}</title>'
+    )
+    if dist:
+        built = Path(dist) / "public-share.html"
+        if built.exists():
+            doc = built.read_text(encoding="utf-8")
+            return doc.replace("</head>", head_extra + "</head>", 1)
+    return (
+        f'<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">'
+        f'<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f'{head_extra}</head><body><div id="root"></div>'
+        f'<script type="module" src="/public-share.js"></script></body></html>'
+    )
+
+
 # --- app factory ------------------------------------------------------------
 
 @asynccontextmanager
@@ -482,6 +519,21 @@ def create_app() -> FastAPI:
     api.include_router(tokens_router)
 
     app.include_router(api)
+
+    @app.get("/s/{slug}")
+    async def share_shell(slug: str):
+        row = supa.get_share_by_slug(slug)
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        if shares_mod.share_status(row) != "active":
+            raise HTTPException(status_code=410, detail="Link no longer active")
+        video = supa.get_video_service(row["video_id"]) or {}
+        html_doc = _render_share_shell(
+            slug, title=video.get("title", "Réelgram"),
+            protected=bool(row.get("password_hash")), media_type=video.get("media_type", "video"),
+        )
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(html_doc)
 
     # CORS is disabled by default (same-origin via nginx). Enable only if
     # CORS_ORIGINS is explicitly set (comma-separated) for split-subdomain deploys.

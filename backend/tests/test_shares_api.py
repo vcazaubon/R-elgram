@@ -238,3 +238,35 @@ def test_public_og_protected_share_404(client, monkeypatch):
     monkeypatch.setattr(supa, "get_share_by_slug",
                         lambda slug: _ready_share_row(password_hash="pbkdf2_sha256$1$aa$bb"))
     assert client.get("/api/share/abc/og").status_code == 404
+
+
+def test_shell_injects_og_meta_no_password(client, monkeypatch):
+    from app import supa
+    monkeypatch.setattr(supa, "get_share_by_slug", lambda slug: _ready_share_row())
+    monkeypatch.setattr(supa, "get_video_service",
+                        lambda vid: {"id": vid, "title": "Routine épaules", "media_type": "video", "status": "ready"})
+    r = client.get("/s/abc")
+    assert r.status_code == 200
+    html = r.text
+    assert "Routine épaules" in html
+    assert 'property="og:image"' in html
+    assert "https://reelgram.test/api/share/abc/og" in html
+
+
+def test_shell_protected_uses_generic_og(client, monkeypatch):
+    from app import supa
+    monkeypatch.setattr(supa, "get_share_by_slug",
+                        lambda slug: _ready_share_row(password_hash="pbkdf2_sha256$1$aa$bb"))
+    monkeypatch.setattr(supa, "get_video_service",
+                        lambda vid: {"id": vid, "title": "Secret", "media_type": "video", "status": "ready"})
+    r = client.get("/s/abc")
+    assert r.status_code == 200
+    assert "Réel protégé" in r.text
+    assert "/api/share/abc/og" not in r.text   # pas de fuite de vignette
+
+
+def test_shell_expired_410(client, monkeypatch):
+    from app import supa
+    monkeypatch.setattr(supa, "get_share_by_slug",
+                        lambda slug: _ready_share_row(revoked_at="2000-01-01T00:00:00+00:00"))
+    assert client.get("/s/abc").status_code == 410
