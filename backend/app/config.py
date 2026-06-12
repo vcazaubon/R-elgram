@@ -62,6 +62,8 @@ class Settings:
     data_dir: Path
     ig_cookies_file: Optional[str]
     max_video_mb: int
+    public_base_url: str
+    public_dist_dir: Optional[str]
 
     # --- directory helpers -------------------------------------------------
     @property
@@ -117,6 +119,8 @@ def load_settings() -> Settings:
         data_dir=Path(os.environ.get("DATA_DIR", "/data")),
         ig_cookies_file=os.environ.get("IG_COOKIES_FILE") or None,
         max_video_mb=int(os.environ.get("MAX_VIDEO_MB", "300")),
+        public_base_url=os.environ.get("PUBLIC_BASE_URL", ""),
+        public_dist_dir=os.environ.get("PUBLIC_DIST_DIR") or None,
     )
 
 

@@ -13,17 +13,24 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 
 from . import auth, ingest, media, supa
+from . import shares as shares_mod
 from .config import get_settings, service_role_key_issue
 from .models import (
     IngestRequest,
     IngestResponse,
     IngestStatus,
     MediaUrls,
+    ShareCreate,
+    ShareCreated,
+    ShareInfo,
+    ShareGlobalInfo,
+    ShareVideoRef,
 )
 from .models import status_to_step
 
@@ -251,6 +258,69 @@ def _build_videos_router() -> APIRouter:
     return router
 
 
+# --- shares helpers + router ------------------------------------------------
+
+def _share_url(slug: str) -> str:
+    base = get_settings().public_base_url.rstrip("/")
+    return f"{base}/s/{slug}"
+
+
+def _share_info(row: dict) -> dict:
+    return {
+        "id": row["id"], "slug": row["slug"], "url": _share_url(row["slug"]),
+        "status": shares_mod.share_status(row),
+        "expires_at": row.get("expires_at"),
+        "has_password": bool(row.get("password_hash")),
+        "view_count": row.get("view_count", 0),
+        "created_at": str(row.get("created_at", "")),
+    }
+
+
+def _build_shares_router() -> APIRouter:
+    router = APIRouter(tags=["shares"])
+
+    @router.post("/videos/{video_id}/shares", response_model=ShareCreated, status_code=201)
+    async def create_share(video_id: str, body: ShareCreate,
+                           user_id: str = Depends(auth.resolve_user_jwt_only)):
+        row = supa.get_video(video_id, user_id=user_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        if row.get("status") != "ready":
+            raise HTTPException(status_code=400, detail="Video not ready")
+        try:
+            exp = shares_mod.expires_at_from(body.expires_in)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid expires_in")
+        exp_iso = datetime.fromtimestamp(exp, timezone.utc).isoformat() if exp else None
+        pw_hash = shares_mod.hash_password(body.password) if body.password else None
+        created = supa.insert_share(user_id, video_id, shares_mod.new_slug(), pw_hash, exp_iso)
+        return ShareCreated(id=created["id"], slug=created["slug"], url=_share_url(created["slug"]),
+                            expires_at=created.get("expires_at"), has_password=pw_hash is not None)
+
+    @router.get("/videos/{video_id}/shares", response_model=list[ShareInfo])
+    async def list_video_shares(video_id: str, user_id: str = Depends(auth.resolve_user_jwt_only)):
+        return [_share_info(r) for r in supa.list_shares_for_video(video_id, user_id)]
+
+    @router.get("/shares", response_model=list[ShareGlobalInfo])
+    async def list_all_shares(user_id: str = Depends(auth.resolve_user_jwt_only)):
+        out = []
+        for r in supa.list_shares_for_user(user_id):
+            info = _share_info(r)
+            v = r.get("videos") or None
+            if v:
+                info["video"] = {"id": v["id"], "title": v.get("title", ""),
+                                 "thumb_color": v.get("thumb_color"), "media_type": v.get("media_type", "video")}
+            out.append(info)
+        return out
+
+    @router.delete("/shares/{share_id}", status_code=204)
+    async def delete_share(share_id: str, user_id: str = Depends(auth.resolve_user_jwt_only)):
+        supa.revoke_share(share_id, user_id, datetime.now(timezone.utc).isoformat())
+        return Response(status_code=204)
+
+    return router
+
+
 # --- app factory ------------------------------------------------------------
 
 @asynccontextmanager
@@ -277,6 +347,7 @@ def create_app() -> FastAPI:
     api.include_router(_build_health_router())
     api.include_router(_build_ingest_router())
     api.include_router(_build_videos_router())
+    api.include_router(_build_shares_router())
 
     from .tokens import router as tokens_router
     api.include_router(tokens_router)
