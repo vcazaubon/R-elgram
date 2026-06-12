@@ -13,6 +13,7 @@
 // ============================================================
 import { config } from './config';
 import type { ApiToken, IngestStatus, MediaUrls, VideoStatus } from './types';
+import type { ShareCreated, ShareInfo, ShareGlobalInfo, ShareExpiresIn } from './types';
 
 // ---- injectable JWT getter --------------------------------------------------
 
@@ -166,4 +167,33 @@ export function createToken(label?: string): Promise<CreatedToken> {
 /** Revoke a personal token. */
 export function deleteToken(id: string): Promise<void> {
   return apiFetch<void>(`/tokens/${id}`, { method: 'DELETE' });
+}
+
+// ---- shares (liens publics) -------------------------------------------------
+
+export interface ShareCreateInput {
+  expires_in: ShareExpiresIn;
+  password?: string | null;
+}
+
+/** Crée un lien de partage pour un réel. */
+export function createShare(videoId: string, input: ShareCreateInput): Promise<ShareCreated> {
+  const payload: { expires_in: ShareExpiresIn; password?: string } = { expires_in: input.expires_in };
+  if (input.password) payload.password = input.password;
+  return apiFetch<ShareCreated>(`/videos/${videoId}/shares`, { method: 'POST', json: payload });
+}
+
+/** Liste les liens d'un réel. */
+export function listVideoShares(videoId: string): Promise<ShareInfo[]> {
+  return apiFetch<ShareInfo[]>(`/videos/${videoId}/shares`);
+}
+
+/** Liste globale de tous les liens (vue Compte). */
+export function listAllShares(): Promise<ShareGlobalInfo[]> {
+  return apiFetch<ShareGlobalInfo[]>('/shares');
+}
+
+/** Révoque un lien. */
+export function deleteShare(shareId: string): Promise<void> {
+  return apiFetch<void>(`/shares/${shareId}`, { method: 'DELETE' });
 }
