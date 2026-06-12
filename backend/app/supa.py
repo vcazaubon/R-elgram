@@ -125,3 +125,53 @@ def list_tokens(user_id: str) -> list[dict]:
 def delete_token(token_id: str, user_id: str) -> None:
     """Delete an ``api_tokens`` row constrained to ``user_id``."""
     get_client().table("api_tokens").delete().eq("id", token_id).eq("user_id", user_id).execute()
+
+
+# --- shares -----------------------------------------------------------------
+
+def get_video_service(video_id: str) -> Optional[dict]:
+    """Fetch a video by id WITHOUT user scoping (pour les chemins publics, après
+    résolution d'un share). À n'utiliser qu'avec un video_id issu d'une ligne shares."""
+    res = get_client().table("videos").select("*").eq("id", video_id).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+def insert_share(user_id: str, video_id: str, slug: str,
+                 password_hash: Optional[str], expires_at_iso: Optional[str]) -> dict:
+    payload = {
+        "user_id": user_id, "video_id": video_id, "slug": slug,
+        "password_hash": password_hash, "expires_at": expires_at_iso,
+    }
+    res = get_client().table("shares").insert(payload).execute()
+    return res.data[0]
+
+
+def list_shares_for_video(video_id: str, user_id: str) -> list[dict]:
+    res = (get_client().table("shares").select("*")
+           .eq("video_id", video_id).eq("user_id", user_id)
+           .order("created_at", desc=True).execute())
+    return res.data or []
+
+
+def list_shares_for_user(user_id: str) -> list[dict]:
+    """Liens + champs du réel joints, pour la vue globale."""
+    res = (get_client().table("shares")
+           .select("*, videos(id,title,thumb_color,media_type)")
+           .eq("user_id", user_id).order("created_at", desc=True).execute())
+    return res.data or []
+
+
+def get_share_by_slug(slug: str) -> Optional[dict]:
+    res = get_client().table("shares").select("*").eq("slug", slug).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+def revoke_share(share_id: str, user_id: str, iso: str) -> None:
+    (get_client().table("shares").update({"revoked_at": iso})
+     .eq("id", share_id).eq("user_id", user_id).execute())
+
+
+def increment_share_view(share_id: str, count: int, iso: str) -> None:
+    """Best-effort : pose view_count + last_viewed_at (count = valeur déjà incrémentée)."""
+    (get_client().table("shares")
+     .update({"view_count": count, "last_viewed_at": iso}).eq("id", share_id).execute())

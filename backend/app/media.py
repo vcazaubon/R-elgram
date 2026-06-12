@@ -82,6 +82,33 @@ def verify_media_token(token: str) -> Tuple[str, str]:
     return vid, uid
 
 
+def sign_share_token(slug: str, ttl: int = 3600) -> str:
+    """Token public lié à un slug de partage (domaine distinct du token média)."""
+    payload = {"sslug": slug, "exp": int(time.time()) + ttl}
+    payload_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    return f"{payload_b64}.{_sign(payload_b64)}"
+
+
+def verify_share_token(token: str) -> str:
+    try:
+        payload_b64, sig = token.split(".", 1)
+    except ValueError as exc:
+        raise MediaTokenError("malformed token") from exc
+    if not hmac.compare_digest(_sign(payload_b64), sig):
+        raise MediaTokenError("bad signature")
+    try:
+        payload = json.loads(_b64url_decode(payload_b64))
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise MediaTokenError("bad payload") from exc
+    exp = payload.get("exp")
+    if not isinstance(exp, (int, float)) or exp < time.time():
+        raise MediaTokenError("expired")
+    slug = payload.get("sslug")
+    if not slug:
+        raise MediaTokenError("not a share token")
+    return slug
+
+
 def _parse_range(range_header: str, file_size: int) -> Optional[Tuple[int, int]]:
     """Parse a single ``bytes=start-end`` range. Returns (start, end) inclusive."""
     if not range_header or not range_header.startswith("bytes="):

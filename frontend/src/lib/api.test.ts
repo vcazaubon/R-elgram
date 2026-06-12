@@ -17,6 +17,7 @@ vi.hoisted(() => {
 });
 
 import * as api from './api';
+import { createShare, listVideoShares, listAllShares, deleteShare } from './api';
 
 beforeEach(() => {
   api.setAuthTokenGetter(async () => 'JWT123');
@@ -214,5 +215,34 @@ describe('error handling', () => {
       },
     });
     await expect(api.ingest('x')).rejects.toBeTruthy();
+  });
+});
+
+describe('shares client', () => {
+  it('createShare POST le payload et renvoie le lien', async () => {
+    const body = { id: 's1', slug: 'abc', url: 'https://x/s/abc', expires_at: null, has_password: false };
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => body,
+    });
+    const r = await createShare('v1', { expires_in: '7d', password: '1234' });
+    expect(r.slug).toBe('abc');
+    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain('/videos/v1/shares');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ expires_in: '7d', password: '1234' });
+  });
+
+  it('deleteShare DELETE le bon id', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 204,
+      json: async () => { throw new Error('no body'); },
+    });
+    await deleteShare('sh-1');
+    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain('/shares/sh-1');
+    expect(init.method).toBe('DELETE');
   });
 });

@@ -69,3 +69,31 @@ export const STATUS_STEP: Record<VideoStatus, number> = {
   ready: 3,
   error: -1,
 };
+
+// ---- liens de partage publics -----------------------------------------------
+
+export type ShareStatus = 'active' | 'expired' | 'revoked';
+export type ShareExpiresIn = '24h' | '7d' | '30d' | null;
+
+export interface ShareCreated {
+  id: string;
+  slug: string;
+  url: string;
+  expires_at: string | null;
+  has_password: boolean;
+}
+
+export interface ShareInfo {
+  id: string;
+  slug: string;
+  url: string;
+  status: ShareStatus;
+  expires_at: string | null;
+  has_password: boolean;
+  view_count: number;
+  created_at: string;
+}
+
+export interface ShareGlobalInfo extends ShareInfo {
+  video?: { id: string; title: string; thumb_color: string | null; media_type: MediaType };
+}

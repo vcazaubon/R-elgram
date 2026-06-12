@@ -20,13 +20,14 @@ import {
 export interface AccountSheetProps {
   onClose: () => void;
   onSignOut: () => void;
+  onSharedLinks: () => void;
 }
 
 function userKeyOf(id: string | undefined | null): string | null {
   return id ? `u:${id}` : null;
 }
 
-export function AccountSheet({ onClose, onSignOut }: AccountSheetProps) {
+export function AccountSheet({ onClose, onSignOut, onSharedLinks }: AccountSheetProps) {
   const { user } = useAuth();
   const email = user?.email ?? '—';
   const userKey = userKeyOf(user?.id);
@@ -257,6 +258,16 @@ export function AccountSheet({ onClose, onSignOut }: AccountSheetProps) {
             </button>
           </div>
         )}
+
+        {/* shared links */}
+        <button onClick={onSharedLinks} style={{ marginTop: 22, width: '100%', display: 'flex', alignItems: 'center', gap: 13, padding: '14px 16px', borderRadius: 16, background: 'var(--bg-1)', border: '1px solid var(--hairline)' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 11, background: 'var(--grad-accent-soft)', border: '1px solid var(--hairline)', display: 'grid', placeItems: 'center', color: 'var(--a-violet)', flex: '0 0 auto' }}><Icons.share size={19} /></div>
+          <div style={{ flex: 1, textAlign: 'left' }}>
+            <div style={{ fontSize: 15, fontWeight: 560, color: 'var(--txt-0)' }}>Liens partagés</div>
+            <div style={{ fontSize: 12.5, color: 'var(--txt-2)', marginTop: 2 }}>Voir et révoquer ce qui est public</div>
+          </div>
+          <Icons.chevron size={18} style={{ color: 'var(--txt-2)' }} />
+        </button>
 
         {/* sign out */}
         <button onClick={onSignOut} style={{ marginTop: 22, width: '100%', height: 54, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontSize: 15.5, fontWeight: 600, color: '#ff8a96', background: 'var(--bg-2)', border: '1px solid var(--hairline)' }}>

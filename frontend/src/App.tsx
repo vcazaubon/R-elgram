@@ -30,10 +30,11 @@ import { ImportScreen } from './screens/ImportScreen';
 import { PlayerScreen } from './screens/PlayerScreen';
 import { GalleryScreen } from './screens/GalleryScreen';
 import { AccountSheet } from './screens/AccountSheet';
+import { SharedLinksScreen } from './screens/SharedLinksScreen';
 import { Toast } from './components/Toast';
 import { detectCompletions, type Completion } from './lib/importToasts';
 
-type Route = 'library' | 'categories' | 'import' | 'player';
+type Route = 'library' | 'categories' | 'import' | 'player' | 'shared-links';
 
 function userKeyOf(id: string | undefined | null): string | null {
   return id ? `u:${id}` : null;
@@ -378,12 +379,16 @@ function AppShell({ onSignOut }: AppShellProps) {
                 onBack={() => go('library')} onUpdate={handleUpdateVideo}
                 onDelete={(v) => { void handleDeleteVideo(v); go('library'); }} />
         )}
+        {route === 'shared-links' && (
+          <SharedLinksScreen onBack={() => go('library')} />
+        )}
       </div>
 
       {accountOpen && (
         <AccountSheet
           onClose={() => setAccountOpen(false)}
           onSignOut={() => { setAccountOpen(false); onSignOut(); }}
+          onSharedLinks={() => { setAccountOpen(false); go('shared-links'); }}
         />
       )}
 

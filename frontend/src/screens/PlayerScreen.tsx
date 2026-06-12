@@ -13,6 +13,7 @@ import type { Category, Video } from '../lib/types';
 import { categoryFor, formatAuthor, formatDate, formatDuration } from '../lib/format';
 import { gradientFromColor } from '../lib/color';
 import { MediaActionSheet, ActionBtn, type SheetType } from './MediaActionSheet';
+import { ShareSheet } from './ShareSheet';
 
 export interface PlayerScreenProps {
   video: Video;
@@ -36,6 +37,7 @@ export function PlayerScreen({ video, categories, streamUrl, onBack, onUpdate, o
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(video.duration_seconds ?? 0);
   const [sheet, setSheet] = useState<SheetType | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [title, setTitle] = useState(video.title);
 
   const cat = categoryFor(video.category_id, categories);
@@ -159,7 +161,9 @@ export function PlayerScreen({ video, categories, streamUrl, onBack, onUpdate, o
         onRename={(t) => { const next = t.trim(); if (next) { setTitle(next); onUpdate({ title: next }); } setSheet(null); }}
         onCategory={(id) => { onUpdate({ category_id: id }); setSheet(null); }}
         onDelete={() => { setSheet(null); onDelete(video); }}
+        onShare={() => { setSheet(null); setShareOpen(true); }}
       />}
+      {shareOpen && <ShareSheet videoId={video.id} videoTitle={title} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }
