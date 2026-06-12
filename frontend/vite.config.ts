@@ -73,6 +73,10 @@ export default defineConfig({
         main: 'index.html',
         'public-share': 'public-share.html',
       },
+      output: {
+        entryFileNames: (chunkInfo) =>
+          chunkInfo.name === 'public-share' ? 'public-share.js' : 'assets/[name]-[hash].js',
+      },
     },
   },
 });

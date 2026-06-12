@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import html as _html
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,14 @@ from .models import status_to_step
 
 MEDIA_TTL = 3600  # signed media URL lifetime (~1h, cf. §5)
 SHARE_TOKEN_TTL = 3600  # share media token lifetime (~1h)
+
+_IMAGE_MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+               "webp": "image/webp", "heic": "image/heic"}
+
+
+def _mime_for(path: str) -> str:
+    ext = path.lower().rsplit(".", 1)[-1] if "." in path else ""
+    return _IMAGE_MIME.get(ext, "image/jpeg")
 
 _unlock_rl = shares_mod.RateLimiter(max_attempts=5, window_seconds=900)
 
@@ -208,16 +217,7 @@ def _build_videos_router() -> APIRouter:
         if not path.exists():
             raise HTTPException(status_code=404, detail="File missing")
         # Serve correct MIME type per extension (Fix 2).
-        _MIME = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".webp": "image/webp",
-            ".heic": "image/heic",
-        }
-        ext = rel.lower().rsplit(".", 1)[-1] if "." in rel else ""
-        ctype = _MIME.get(f".{ext}", "image/jpeg")
-        return media.stream_file(path, request.headers.get("Range"), media_type=ctype)
+        return media.stream_file(path, request.headers.get("Range"), media_type=_mime_for(rel))
 
     @router.delete("/{video_id}", status_code=204)
     async def delete_video(
@@ -418,10 +418,7 @@ def _build_public_share_router() -> APIRouter:
         path = get_settings().abs_path(entry["path"])
         if not path.exists():
             raise HTTPException(status_code=404, detail="File missing")
-        _MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-                 "webp": "image/webp", "heic": "image/heic"}
-        ext = entry["path"].lower().rsplit(".", 1)[-1] if "." in entry["path"] else ""
-        return media.stream_file(path, request.headers.get("Range"), media_type=_MIME.get(ext, "image/jpeg"))
+        return media.stream_file(path, request.headers.get("Range"), media_type=_mime_for(entry["path"]))
 
     @router.get("/{slug}/thumb")
     async def thumb(slug: str, request: Request, t: str = Query(...)):
@@ -478,11 +475,13 @@ def _render_share_shell(slug: str, *, title: str, protected: bool, media_type: s
         built = Path(dist) / "public-share.html"
         if built.exists():
             doc = built.read_text(encoding="utf-8")
+            doc = re.sub(r"<title>.*?</title>", "", doc, count=1, flags=re.DOTALL)
             return doc.replace("</head>", head_extra + "</head>", 1)
     return (
         f'<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">'
         f'<meta name="viewport" content="width=device-width, initial-scale=1">'
         f'{head_extra}</head><body><div id="root"></div>'
+        f'<script src="/env.js"></script>'
         f'<script type="module" src="/public-share.js"></script></body></html>'
     )
 

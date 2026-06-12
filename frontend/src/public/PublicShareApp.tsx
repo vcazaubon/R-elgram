@@ -29,6 +29,7 @@ export function PublicShareApp() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#060608', color: '#f4f4f6', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}} *{box-sizing:border-box} html,body{margin:0;padding:0;background:#060608} .scroll::-webkit-scrollbar{display:none}`}</style>
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(85% 50% at 50% 22%, rgba(167,139,250,0.3), transparent 62%)', filter: 'blur(22px)' }} />
       <Wordmark />
       {view.kind === 'loading' && <Centered><Spinner /></Centered>}
