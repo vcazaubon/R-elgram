@@ -17,7 +17,7 @@ vi.hoisted(() => {
 });
 
 import * as api from './api';
-import { createShare, listVideoShares, listAllShares, deleteShare } from './api';
+import { createShare, deleteShare } from './api';
 
 beforeEach(() => {
   api.setAuthTokenGetter(async () => 'JWT123');
