@@ -180,6 +180,31 @@ export const Icons = {
       <path d="M16.5 16.5l2-2M14.5 14.5l2-2" />
     </Ico>
   ),
+  share: (p: IconProps) => (
+    <Ico {...p}>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+    </Ico>
+  ),
+  lock: (p: IconProps) => (
+    <Ico {...p}>
+      <rect x="4" y="11" width="16" height="9" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </Ico>
+  ),
+  globe: (p: IconProps) => (
+    <Ico {...p}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5a15 15 0 0 1 0 18 15 15 0 0 1 0-18" />
+    </Ico>
+  ),
+  infinity: (p: IconProps) => (
+    <Ico {...p}>
+      <path d="M6.5 9a3 3 0 1 0 0 6c1.6 0 2.7-1.2 3.5-2.5l1-1.5C15 9 16 9 17.5 9a3 3 0 1 1 0 6c-1.5 0-2.5 0-3.5-1.5" />
+    </Ico>
+  ),
 } satisfies Record<string, (p: IconProps) => ReactNode>;
 
 export type IconName = keyof typeof Icons;
